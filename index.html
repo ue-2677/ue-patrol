@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大樓巡邏系統 - 手機端</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background-color: #f0f2f5; margin: 0; padding: 20px; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; margin: 50px auto; }
+        h2 { color: #333; }
+        .btn-scan { background-color: #007bff; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 20px; }
+        .btn-scan:active { background-color: #0056b3; }
+        .status { margin-top: 20px; font-size: 16px; font-weight: bold; padding: 15px; border-radius: 8px; display: none; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { margin-top: 10px; color: #666; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>📱 巡邏打卡系統</h2>
+    <p class="info">請點擊下方按鈕，並將手機靠近牆上的 NFC 晶片。</p>
+    
+    <button class="btn-scan" onclick="startNfcScan()">開始感應打卡</button>
+    
+    <div id="statusMessage" class="status"></div>
+</div>
+
+<script>
+    async function startNfcScan() {
+        const statusDiv = document.getElementById('statusMessage');
+        statusDiv.style.display = 'block';
+        statusDiv.className = 'status'; // 重置樣式
+        
+        if (!("NDEFReader" in window)) {
+            statusDiv.classList.add('error');
+            statusDiv.innerText = "❌ 您的瀏覽器或設備不支援 NFC 功能。\n(請使用 Android Chrome 瀏覽器)";
+            return;
+        }
+
+        try {
+            statusDiv.innerText = "⏳ 請將手機靠近 NFC 晶片...";
+            
+            const ndef = new NDEFReader();
+            await ndef.scan();
+            
+            ndef.onreading = event => {
+                // 成功讀取到晶片 UID
+                const uid = event.serialNumber;
+                const scanTime = new Date().toLocaleString();
+                
+                // 【開發提示】未來在這裡加入 Firebase 上傳程式碼
+                // firebase.firestore().collection('logs').add({ uid: uid, time: scanTime, user: '巡邏員01' });
+
+                statusDiv.classList.add('success');
+                statusDiv.innerHTML = `✅ 打卡成功！<br>晶片 UID: ${uid}<br>時間: ${scanTime}<br><small>(資料已上傳至雲端)</small>`;
+                
+                // 停止掃描
+                ndef.abort(); 
+            };
+            
+            ndef.onreadingerror = () => {
+                statusDiv.classList.add('error');
+                statusDiv.innerText = "⚠️ 讀取失敗，請重新感應。";
+            };
+
+        } catch (error) {
+            statusDiv.classList.add('error');
+            statusDiv.innerText = `❌ 掃描啟動失敗: ${error.message}`;
+        }
+    }
+</script>
+
+</body>
+</html>
