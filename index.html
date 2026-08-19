@@ -414,22 +414,37 @@
 
     function verifyPatrolPoint(scannedUid) {
         // 從本機資料庫反查這個晶片屬於哪個地點
-        const db = JSON.parse(localStorage.getItem('uidMappingDb'));
+        const db = JSON.parse(localStorage.getItem('uidMappingDb')) || {};
         const scannedLocationName = db[scannedUid]; 
         const targetLocationName = currentActiveTask.points[currentActiveTask.currentPointIndex];
 
+        // 狀況 1：晶片完全沒有被管理員綁定過
         if (!scannedLocationName) {
             showMsg('patrolMsg', `❌ 未知晶片！<br>此晶片尚未被管理員綁定任何地點。<br><small>UID: ${scannedUid}</small>`, "error");
             return;
         }
 
+        // 狀況 2：完全正確打卡
         if (scannedLocationName === targetLocationName) {
-            // 成功比對
             showMsg('patrolMsg', `✅ 成功打卡：${targetLocationName}`, "success");
             saveTaskProgress();
-        } else {
-            // 掃錯點了，防呆機制
-            showMsg('patrolMsg', `❌ 地點錯誤！<br>您掃描到的是「${scannedLocationName}」。<br>目前目標是「${targetLocationName}」。`, "error");
+            return;
+        }
+
+        // 狀況 3：錯誤防呆分析 (找尋掃到的地點在路線中的哪裡)
+        const pointIndexInRoute = currentActiveTask.points.indexOf(scannedLocationName);
+
+        if (pointIndexInRoute === -1) {
+            // 功能加回：地點根本不在這條路線裡
+            showMsg('patrolMsg', `❌ 路線錯誤！<br>您掃描到的是「${scannedLocationName}」。<br>但這個地點<b>不在</b>目前的巡邏路線中。<br><hr>目前目標是「${targetLocationName}」。`, "error");
+            
+        } else if (pointIndexInRoute > currentActiveTask.currentPointIndex) {
+            // 功能加回：跳號了 (掃到後面的點)
+            showMsg('patrolMsg', `❌ 順序錯誤！<br>這是之後的點「${scannedLocationName}」。<br><br>請先回去掃描目前的目標「${targetLocationName}」。`, "error");
+            
+        } else if (pointIndexInRoute < currentActiveTask.currentPointIndex) {
+            // 功能加回：已經掃過了
+            showMsg('patrolMsg', `❌ 重複掃描！<br>「${scannedLocationName}」剛剛已經完成打卡了。<br><hr>目前目標是「${targetLocationName}」。`, "error");
         }
     }
 
