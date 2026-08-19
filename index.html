@@ -3,72 +3,319 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>大樓巡邏系統 - 手機端</title>
+    <title>大樓巡邏系統 - 升級版</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background-color: #f0f2f5; margin: 0; padding: 20px; }
-        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; margin: 50px auto; }
-        h2 { color: #333; }
-        .btn-scan { background-color: #007bff; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 20px; }
-        .btn-scan:active { background-color: #0056b3; }
-        .status { margin-top: 20px; font-size: 16px; font-weight: bold; padding: 15px; border-radius: 8px; display: none; }
-        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .info { margin-top: 10px; color: #666; font-size: 14px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 15px; color: #333; }
+        .container { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto; }
+        h2 { text-align: center; color: #1a73e8; margin-top: 0; }
+        
+        /* 網路狀態列 */
+        #networkStatus { text-align: center; padding: 8px; border-radius: 6px; margin-bottom: 15px; font-weight: bold; font-size: 14px; }
+        .online { background-color: #d4edda; color: #155724; }
+        .offline { background-color: #f8d7da; color: #721c24; }
+
+        /* 路線選擇區 */
+        #routeSelection { display: block; }
+        .search-box { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 15px; box-sizing: border-box; }
+        .route-list { list-style: none; padding: 0; margin: 0; max-height: 200px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; }
+        .route-item { padding: 12px 15px; border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s; }
+        .route-item:hover, .route-item.selected { background-color: #e8f0fe; font-weight: bold; color: #1a73e8; }
+        .btn-start { background-color: #1a73e8; color: white; border: none; padding: 15px; font-size: 18px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 15px; font-weight: bold; }
+
+        /* 巡邏執行區 */
+        #patrolExecution { display: none; text-align: center; }
+        .route-title { font-size: 20px; font-weight: bold; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .target-box { background: #fff3cd; border: 2px solid #ffeeba; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
+        .target-box p { margin: 5px 0; color: #856404; font-size: 14px; }
+        .target-name { font-size: 24px; font-weight: bold; color: #856404; margin: 10px 0 !important; }
+        
+        .btn-scan { background-color: #28a745; color: white; border: none; padding: 18px; font-size: 20px; border-radius: 8px; cursor: pointer; width: 100%; margin-bottom: 15px; font-weight: bold; box-shadow: 0 4px 6px rgba(40,167,69,0.3); }
+        .btn-scan:active { background-color: #218838; transform: translateY(2px); }
+        .btn-skip { background-color: #6c757d; color: white; border: none; padding: 12px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; }
+        
+        /* 提示訊息 */
+        #messageBox { margin-top: 15px; padding: 15px; border-radius: 8px; font-weight: bold; display: none; text-align: left; line-height: 1.5; }
+        .msg-error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .msg-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>📱 巡邏打卡系統</h2>
-    <p class="info">請點擊下方按鈕，並將手機靠近牆上的 NFC 晶片。</p>
+    <h2>🏢 智慧巡邏系統</h2>
     
-    <button class="btn-scan" onclick="startNfcScan()">開始感應打卡</button>
-    
-    <div id="statusMessage" class="status"></div>
+    <!-- 網路與離線狀態指示 -->
+    <div id="networkStatus" class="online">🟢 網路連線正常</div>
+
+    <!-- 步驟 1：路線選擇區 -->
+    <div id="routeSelection">
+        <h3>📍 選擇巡邏路線</h3>
+        <input type="text" id="searchInput" class="search-box" placeholder="輸入關鍵字搜尋路線..." onkeyup="filterRoutes()">
+        
+        <ul id="routeList" class="route-list">
+            <!-- 路線列表會由 JS 動態產生 -->
+        </ul>
+
+        <button class="btn-start" onclick="startPatrol()">🚀 開始巡邏</button>
+    </div>
+
+    <!-- 步驟 2：巡邏執行區 -->
+    <div id="patrolExecution">
+        <div class="route-title" id="currentRouteTitle">路線名稱</div>
+        
+        <div class="target-box">
+            <p>目前目標：第 <span id="pointIndex">1</span> 點</p>
+            <p class="target-name" id="currentTargetName">A棟大廳</p>
+        </div>
+
+        <button class="btn-scan" id="scanBtn" onclick="scanNfc()">📲 感應 NFC 晶片</button>
+        <button class="btn-skip" onclick="skipCurrentPoint()">⏭️ 晶片故障/無法感應 (跳過)</button>
+
+        <div id="messageBox"></div>
+    </div>
 </div>
 
 <script>
-    async function startNfcScan() {
-        const statusDiv = document.getElementById('statusMessage');
-        statusDiv.style.display = 'block';
-        statusDiv.className = 'status'; // 重置樣式
+    // ==========================================
+    // 1. 模擬資料庫設定 (假資料)
+    // ==========================================
+    // 注意：這裡我將你剛才測試成功的 UID 放在第一個點
+    const routesData = [
+        { 
+            id: 'R01', 
+            name: 'A棟 夜間全區巡邏', 
+            points: [
+                { id: 'P01', name: 'A棟 1F 大廳 (測試點)', uid: '04:3A:F0:02:43:70:81' },
+                { id: 'P02', name: 'A棟 B1 機電房', uid: '04:A1:B2:C3:D4:E5:F6' },
+                { id: 'P03', name: 'A棟 RF 頂樓', uid: '04:11:22:33:44:55:66' }
+            ]
+        },
+        { 
+            id: 'R02', 
+            name: 'B棟 走廊巡視', 
+            points: [
+                { id: 'P04', name: 'B棟 1F 後門', uid: '04:77:88:99:AA:BB:CC' },
+                { id: 'P05', name: 'B棟 5F 走廊', uid: '04:DD:EE:FF:00:11:22' }
+            ]
+        }
+    ];
+
+    // 全域變數
+    let selectedRoute = null;
+    let currentPointIndex = 0;
+    let nfcReader = null;
+
+    // ==========================================
+    // 2. 介面初始化與路線搜尋
+    // ==========================================
+    window.onload = () => {
+        renderRoutes(routesData);
+        checkNetworkStatus();
+        syncOfflineLogs(); // 開啟時嘗試上傳之前離線的資料
+    };
+
+    function renderRoutes(routes) {
+        const list = document.getElementById('routeList');
+        list.innerHTML = '';
+        routes.forEach(route => {
+            const li = document.createElement('li');
+            li.className = 'route-item';
+            li.innerText = route.name;
+            li.onclick = () => selectRoute(li, route);
+            list.appendChild(li);
+        });
+    }
+
+    function filterRoutes() {
+        const keyword = document.getElementById('searchInput').value.toLowerCase();
+        const filtered = routesData.filter(r => r.name.toLowerCase().includes(keyword));
+        renderRoutes(filtered);
+    }
+
+    function selectRoute(element, route) {
+        document.querySelectorAll('.route-item').forEach(el => el.classList.remove('selected'));
+        element.classList.add('selected');
+        selectedRoute = route;
+    }
+
+    // ==========================================
+    // 3. 巡邏邏輯與防呆機制
+    // ==========================================
+    function startPatrol() {
+        if (!selectedRoute) {
+            alert("請先點選一條巡邏路線！");
+            return;
+        }
+        document.getElementById('routeSelection').style.display = 'none';
+        document.getElementById('patrolExecution').style.display = 'block';
+        document.getElementById('currentRouteTitle').innerText = selectedRoute.name;
         
+        currentPointIndex = 0;
+        updateUIForCurrentPoint();
+    }
+
+    function updateUIForCurrentPoint() {
+        if (currentPointIndex >= selectedRoute.points.length) {
+            // 路線巡邏完畢
+            document.getElementById('patrolExecution').innerHTML = `
+                <h2 style="color: #28a745;">🎉 巡邏完成！</h2>
+                <p>路線：${selectedRoute.name} 已全部巡視完畢。</p>
+                <button class="btn-start" onclick="location.reload()">返回首頁</button>
+            `;
+            return;
+        }
+        
+        const targetPoint = selectedRoute.points[currentPointIndex];
+        document.getElementById('pointIndex').innerText = currentPointIndex + 1;
+        document.getElementById('currentTargetName').innerText = targetPoint.name;
+        hideMessage();
+    }
+
+    // ==========================================
+    // 4. NFC 掃描與比對
+    // ==========================================
+    async function scanNfc() {
         if (!("NDEFReader" in window)) {
-            statusDiv.classList.add('error');
-            statusDiv.innerText = "❌ 您的瀏覽器或設備不支援 NFC 功能。\n(請使用 Android Chrome 瀏覽器)";
+            showMessage("❌ 設備不支援 NFC，請使用 Android Chrome。", "error");
             return;
         }
 
+        const btn = document.getElementById('scanBtn');
+        btn.innerText = "⏳ 請將手機靠近晶片...";
+        btn.style.backgroundColor = "#ffc107"; // 變成黃色提示感應中
+
         try {
-            statusDiv.innerText = "⏳ 請將手機靠近 NFC 晶片...";
+            nfcReader = new NDEFReader();
+            await nfcReader.scan();
             
-            const ndef = new NDEFReader();
-            await ndef.scan();
-            
-            ndef.onreading = event => {
-                // 成功讀取到晶片 UID
-                const uid = event.serialNumber;
-                const scanTime = new Date().toLocaleString();
-                
-                // 【開發提示】未來在這裡加入 Firebase 上傳程式碼
-                // firebase.firestore().collection('logs').add({ uid: uid, time: scanTime, user: '巡邏員01' });
-
-                statusDiv.classList.add('success');
-                statusDiv.innerHTML = `✅ 打卡成功！<br>晶片 UID: ${uid}<br>時間: ${scanTime}<br><small>(資料已上傳至雲端)</small>`;
-                
-                // 停止掃描
-                ndef.abort(); 
+            nfcReader.onreading = event => {
+                const scannedUid = event.serialNumber;
+                verifyPoint(scannedUid);
+                nfcReader.abort(); // 讀到一次就停止，避免重複觸發
+                resetScanBtn();
             };
             
-            ndef.onreadingerror = () => {
-                statusDiv.classList.add('error');
-                statusDiv.innerText = "⚠️ 讀取失敗，請重新感應。";
+            nfcReader.onreadingerror = () => {
+                showMessage("⚠️ 讀取不完整，請重新感應。", "error");
+                resetScanBtn();
             };
-
         } catch (error) {
-            statusDiv.classList.add('error');
-            statusDiv.innerText = `❌ 掃描啟動失敗: ${error.message}`;
+            showMessage("❌ 啟動 NFC 失敗: " + error.message, "error");
+            resetScanBtn();
         }
+    }
+
+    function resetScanBtn() {
+        const btn = document.getElementById('scanBtn');
+        btn.innerText = "📲 感應 NFC 晶片";
+        btn.style.backgroundColor = "#28a745";
+    }
+
+    function verifyPoint(scannedUid) {
+        const targetPoint = selectedRoute.points[currentPointIndex];
+
+        // 1. 成功比對：確實是當前要求的目標點
+        if (scannedUid === targetPoint.uid) {
+            savePatrolLog(targetPoint.name, scannedUid, "✅ 正常打卡");
+            showMessage(`✅ 成功打卡：${targetPoint.name}`, "success");
+            currentPointIndex++;
+            setTimeout(updateUIForCurrentPoint, 1500); // 1.5秒後切換下一個點
+            return;
+        }
+
+        // 2. 錯誤比對：掃到了別的點，找出是哪一個
+        const wrongPointIndex = selectedRoute.points.findIndex(p => p.uid === scannedUid);
+        
+        if (wrongPointIndex !== -1) {
+            const wrongPoint = selectedRoute.points[wrongPointIndex];
+            if (wrongPointIndex > currentPointIndex) {
+                showMessage(`❌ 順序錯誤！<br>這是下一個(或之後)的點「${wrongPoint.name}」。<br><br>請先回去掃描目前的目標「${targetPoint.name}」。<br><small>若目前目標晶片故障，請點擊下方的跳過按鈕。</small>`, "error");
+            } else {
+                showMessage(`❌ 重複掃描！<br>「${wrongPoint.name}」剛剛已經巡過了。<br><br>現時目標為「${targetPoint.name}」。`, "error");
+            }
+        } else {
+            showMessage(`❌ 未知晶片！這顆晶片不屬於這條路線。<br>UID: ${scannedUid}`, "error");
+        }
+    }
+
+    function skipCurrentPoint() {
+        const targetPoint = selectedRoute.points[currentPointIndex];
+        if(confirm(`確定要跳過「${targetPoint.name}」嗎？\n這將在紀錄中標示為異常。`)) {
+            savePatrolLog(targetPoint.name, "N/A", "⚠️ 異常跳過");
+            showMessage(`已跳過：${targetPoint.name}`, "success");
+            currentPointIndex++;
+            setTimeout(updateUIForCurrentPoint, 1000);
+        }
+    }
+
+    // ==========================================
+    // 5. 離線儲存與自動同步機制
+    // ==========================================
+    function savePatrolLog(pointName, uid, status) {
+        const log = {
+            routeName: selectedRoute.name,
+            pointName: pointName,
+            uid: uid,
+            status: status,
+            time: new Date().toLocaleString()
+        };
+
+        // 讀取目前的離線佇列
+        let offlineQueue = JSON.parse(localStorage.getItem('patrolLogs')) || [];
+        offlineQueue.push(log);
+        localStorage.setItem('patrolLogs', JSON.stringify(offlineQueue));
+
+        // 嘗試上傳
+        syncOfflineLogs();
+    }
+
+    function syncOfflineLogs() {
+        let offlineQueue = JSON.parse(localStorage.getItem('patrolLogs')) || [];
+        const statusDiv = document.getElementById('networkStatus');
+
+        if (navigator.onLine) {
+            if (offlineQueue.length > 0) {
+                statusDiv.className = "online";
+                statusDiv.innerText = `🟢 網路正常，正在上傳 ${offlineQueue.length} 筆紀錄...`;
+                
+                // 【開發提示】未來這裡替換成 Firebase 的上傳程式碼
+                console.log("上傳資料到雲端:", offlineQueue);
+                
+                // 模擬上傳成功後，清空本機儲存
+                setTimeout(() => {
+                    localStorage.removeItem('patrolLogs');
+                    statusDiv.innerText = "🟢 網路正常，所有紀錄已上傳雲端";
+                }, 1000);
+            } else {
+                statusDiv.className = "online";
+                statusDiv.innerText = "🟢 網路連線正常";
+            }
+        } else {
+            statusDiv.className = "offline";
+            statusDiv.innerText = `🔴 離線模式，已暫存 ${offlineQueue.length} 筆紀錄`;
+        }
+    }
+
+    // 監聽網路狀態改變
+    window.addEventListener('online', () => {
+        showMessage("🌐 網路已恢復，正在同步資料...", "success");
+        syncOfflineLogs();
+    });
+    window.addEventListener('offline', () => {
+        syncOfflineLogs();
+    });
+
+    // ==========================================
+    // 工具函數：訊息顯示
+    // ==========================================
+    function showMessage(htmlText, type) {
+        const box = document.getElementById('messageBox');
+        box.style.display = 'block';
+        box.className = type === 'error' ? 'msg-error' : 'msg-success';
+        box.innerHTML = htmlText;
+    }
+    function hideMessage() {
+        document.getElementById('messageBox').style.display = 'none';
     }
 </script>
 
