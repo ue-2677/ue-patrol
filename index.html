@@ -3,126 +3,304 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>大樓巡邏系統 - 升級版</title>
+    <title>大樓巡邏系統 - 專業版</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 15px; color: #333; }
-        .container { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto; }
-        h2 { text-align: center; color: #1a73e8; margin-top: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 0; color: #333; overflow-x: hidden; }
+        .app-header { background: #1a73e8; color: white; padding: 15px; text-align: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        .app-header h2 { margin: 0; font-size: 18px; flex-grow: 1; }
+        .btn-back { background: transparent; border: none; color: white; font-size: 16px; cursor: pointer; display: none; }
         
+        .container { padding: 15px; max-width: 500px; margin: 0 auto; padding-bottom: 80px; }
+        
+        /* 畫面切換控制 */
+        .view-section { display: none; animation: fadeIn 0.3s; }
+        .view-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
         /* 網路狀態列 */
-        #networkStatus { text-align: center; padding: 8px; border-radius: 6px; margin-bottom: 15px; font-weight: bold; font-size: 14px; }
+        #networkStatus { text-align: center; padding: 8px; font-size: 12px; font-weight: bold; }
         .online { background-color: #d4edda; color: #155724; }
         .offline { background-color: #f8d7da; color: #721c24; }
 
-        /* 路線選擇區 */
-        #routeSelection { display: block; }
-        .search-box { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 15px; box-sizing: border-box; }
-        .route-list { list-style: none; padding: 0; margin: 0; max-height: 200px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; }
-        .route-item { padding: 12px 15px; border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s; }
-        .route-item:hover, .route-item.selected { background-color: #e8f0fe; font-weight: bold; color: #1a73e8; }
-        .btn-start { background-color: #1a73e8; color: white; border: none; padding: 15px; font-size: 18px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 15px; font-weight: bold; }
+        /* 共用卡片與按鈕 */
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 15px; }
+        .btn { border: none; padding: 15px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; margin-bottom: 10px; }
+        .btn-primary { background-color: #1a73e8; color: white; }
+        .btn-success { background-color: #28a745; color: white; }
+        .btn-warning { background-color: #ffc107; color: #333; }
+        .btn-secondary { background-color: #6c757d; color: white; }
 
-        /* 巡邏執行區 */
-        #patrolExecution { display: none; text-align: center; }
-        .route-title { font-size: 20px; font-weight: bold; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        .target-box { background: #fff3cd; border: 2px solid #ffeeba; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
-        .target-box p { margin: 5px 0; color: #856404; font-size: 14px; }
-        .target-name { font-size: 24px; font-weight: bold; color: #856404; margin: 10px 0 !important; }
+        /* 角色選擇 */
+        .role-icon { font-size: 50px; margin-bottom: 10px; display: block; }
+        .role-btn { height: 150px; font-size: 20px; }
+
+        /* 巡邏員：任務列表與懸浮按鈕 */
+        .task-group-title { font-size: 14px; color: #666; margin: 15px 0 5px 5px; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+        .task-item { background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; cursor: pointer; border-left: 4px solid #1a73e8; }
+        .task-item.completed { border-left-color: #28a745; opacity: 0.7; }
+        .task-info h4 { margin: 0 0 5px 0; font-size: 16px; }
+        .task-info p { margin: 0; font-size: 12px; color: #666; }
         
-        .btn-scan { background-color: #28a745; color: white; border: none; padding: 18px; font-size: 20px; border-radius: 8px; cursor: pointer; width: 100%; margin-bottom: 15px; font-weight: bold; box-shadow: 0 4px 6px rgba(40,167,69,0.3); }
-        .btn-scan:active { background-color: #218838; transform: translateY(2px); }
-        .btn-skip { background-color: #6c757d; color: white; border: none; padding: 12px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; }
-        
+        .fab { position: fixed; bottom: 20px; right: 20px; width: 60px; height: 60px; background-color: #1a73e8; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 30px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); cursor: pointer; z-index: 1000; border: none; transition: transform 0.2s; }
+        .fab:active { transform: scale(0.9); }
+
+        /* 路線選擇清單 */
+        .search-box { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 15px; box-sizing: border-box; }
+        .route-item { padding: 15px; background: white; border-bottom: 1px solid #eee; margin-bottom: 5px; border-radius: 8px; cursor: pointer; }
+
+        /* 管理員介面 */
+        .admin-result { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: none; }
+        select { width: 100%; padding: 12px; font-size: 16px; margin: 10px 0; border-radius: 8px; border: 1px solid #ccc; }
+
         /* 提示訊息 */
-        #messageBox { margin-top: 15px; padding: 15px; border-radius: 8px; font-weight: bold; display: none; text-align: left; line-height: 1.5; }
+        .msg-box { margin-top: 15px; padding: 15px; border-radius: 8px; font-weight: bold; display: none; line-height: 1.5; font-size: 14px; }
         .msg-error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         .msg-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
     </style>
 </head>
 <body>
 
+<div id="networkStatus" class="online">🟢 網路連線正常</div>
+
+<div class="app-header">
+    <button class="btn-back" id="btnBack" onclick="goBack()">◀ 返回</button>
+    <h2 id="headerTitle">大樓巡邏系統</h2>
+    <div style="width: 40px;"></div> <!-- 排版用預留空間 -->
+</div>
+
 <div class="container">
-    <h2>🏢 智慧巡邏系統</h2>
-    
-    <!-- 網路與離線狀態指示 -->
-    <div id="networkStatus" class="online">🟢 網路連線正常</div>
-
-    <!-- 步驟 1：路線選擇區 -->
-    <div id="routeSelection">
-        <h3>📍 選擇巡邏路線</h3>
-        <input type="text" id="searchInput" class="search-box" placeholder="輸入關鍵字搜尋路線..." onkeyup="filterRoutes()">
-        
-        <ul id="routeList" class="route-list">
-            <!-- 路線列表會由 JS 動態產生 -->
-        </ul>
-
-        <button class="btn-start" onclick="startPatrol()">🚀 開始巡邏</button>
+    <!-- ============================================== -->
+    <!-- 視圖 1：首頁 (身分選擇) -->
+    <!-- ============================================== -->
+    <div id="view-role" class="view-section active">
+        <h3 style="text-align: center; margin-bottom: 30px;">請選擇您的身分</h3>
+        <button class="btn btn-primary role-btn" onclick="switchView('view-patrol-home', '巡邏任務管理')">
+            <span class="role-icon">👮</span> 巡邏員模式
+        </button>
+        <button class="btn btn-secondary role-btn" onclick="switchView('view-admin', '晶片管理後台')">
+            <span class="role-icon">⚙️</span> 管理員模式
+        </button>
     </div>
 
-    <!-- 步驟 2：巡邏執行區 -->
-    <div id="patrolExecution">
-        <div class="route-title" id="currentRouteTitle">路線名稱</div>
-        
-        <div class="target-box">
-            <p>目前目標：第 <span id="pointIndex">1</span> 點</p>
-            <p class="target-name" id="currentTargetName">A棟大廳</p>
+    <!-- ============================================== -->
+    <!-- 視圖 2：管理員 (晶片綁定) -->
+    <!-- ============================================== -->
+    <div id="view-admin" class="view-section">
+        <div class="card">
+            <p>請將手機靠近牆壁上的 NFC 晶片，以檢測或重新綁定地點。</p>
+            <button class="btn btn-primary" id="adminScanBtn" onclick="adminScanNfc()">📲 掃描晶片</button>
+            
+            <div id="adminResult" class="admin-result">
+                <p>晶片 UID: <strong id="adminUidDisplay"></strong></p>
+                <p>目前綁定: <strong id="adminCurrentLoc" style="color: #1a73e8;"></strong></p>
+                
+                <hr style="border: 0.5px solid #ddd; margin: 15px 0;">
+                <h4>更新巡邏點設定</h4>
+                <select id="adminLocationSelect">
+                    <!-- 地點選項由 JS 產生 -->
+                </select>
+                <button class="btn btn-success" onclick="adminUpdateMapping()">儲存綁定設定</button>
+            </div>
+            <div id="adminMsg" class="msg-box"></div>
+        </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- 視圖 3：巡邏員 (任務列表) -->
+    <!-- ============================================== -->
+    <div id="view-patrol-home" class="view-section">
+        <div class="task-group-title">📋 未完成路線 (可接續)</div>
+        <div id="incompleteTasksList"></div>
+
+        <div class="task-group-title" style="margin-top: 30px;">✅ 最近完成路線</div>
+        <div id="completedTasksList"></div>
+
+        <!-- 懸浮新增按鈕 -->
+        <button class="fab" onclick="switchView('view-route-add', '新增巡邏路線')">➕</button>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- 視圖 4：新增路線 (選擇器) -->
+    <!-- ============================================== -->
+    <div id="view-route-add" class="view-section">
+        <input type="text" id="searchInput" class="search-box" placeholder="輸入關鍵字搜尋路線..." onkeyup="filterRoutes()">
+        <div id="routeList">
+            <!-- 路線列表由 JS 產生 -->
+        </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- 視圖 5：巡邏執行中 -->
+    <!-- ============================================== -->
+    <div id="view-patrol-exec" class="view-section">
+        <div class="card" style="text-align: center; background: #fff3cd; border: 2px solid #ffeeba;">
+            <p style="margin: 5px 0; color: #856404; font-size: 14px;">目前目標：第 <span id="pointIndex">1</span> 點</p>
+            <h3 id="currentTargetName" style="color: #856404; margin: 10px 0; font-size: 24px;"></h3>
         </div>
 
-        <button class="btn-scan" id="scanBtn" onclick="scanNfc()">📲 感應 NFC 晶片</button>
-        <button class="btn-skip" onclick="skipCurrentPoint()">⏭️ 晶片故障/無法感應 (跳過)</button>
+        <button class="btn btn-success" id="scanBtn" onclick="patrolScanNfc()" style="padding: 20px; font-size: 20px;">📲 感應 NFC 晶片</button>
+        <button class="btn btn-secondary" onclick="skipCurrentPoint()">⏭️ 晶片故障 (跳過本點)</button>
 
-        <div id="messageBox"></div>
+        <div id="patrolMsg" class="msg-box"></div>
     </div>
 </div>
 
 <script>
     // ==========================================
-    // 1. 模擬資料庫設定 (假資料)
+    // 1. 系統資料庫 (模擬雲端資料)
     // ==========================================
-    // 注意：這裡我將你剛才測試成功的 UID 放在第一個點
+    
+    // 路線定義表
     const routesData = [
-        { 
-            id: 'R01', 
-            name: 'A棟 夜間全區巡邏', 
-            points: [
-                { id: 'P01', name: 'A棟 1F 大廳 (測試點)', uid: '04:3A:F0:02:43:70:81' },
-                { id: 'P02', name: 'A棟 B1 機電房', uid: '04:A1:B2:C3:D4:E5:F6' },
-                { id: 'P03', name: 'A棟 RF 頂樓', uid: '04:11:22:33:44:55:66' }
-            ]
-        },
-        { 
-            id: 'R02', 
-            name: 'B棟 走廊巡視', 
-            points: [
-                { id: 'P04', name: 'B棟 1F 後門', uid: '04:77:88:99:AA:BB:CC' },
-                { id: 'P05', name: 'B棟 5F 走廊', uid: '04:DD:EE:FF:00:11:22' }
-            ]
-        }
+        { id: 'R01', name: 'A棟 夜間全區巡邏', points: ['A棟 1F 大廳', 'A棟 B1 機電房', 'A棟 RF 頂樓'] },
+        { id: 'R02', name: 'B棟 走廊巡視', points: ['B棟 1F 後門', 'B棟 5F 走廊'] }
     ];
 
-    // 全域變數
-    let selectedRoute = null;
-    let currentPointIndex = 0;
-    let nfcReader = null;
+    // 取出所有不重複的地點，供管理員下拉選單使用
+    const allLocations = [...new Set(routesData.flatMap(r => r.points))];
 
-    // ==========================================
-    // 2. 介面初始化與路線搜尋
-    // ==========================================
+    // 全域狀態變數
+    let currentActiveTask = null; // 正在執行的任務
+    let nfcReader = null;
+    let viewHistory = []; // 紀錄畫面歷史以支援返回鍵
+
+    // 系統初始化
     window.onload = () => {
-        renderRoutes(routesData);
+        initDatabase();
+        renderAdminDropdown();
         checkNetworkStatus();
-        syncOfflineLogs(); // 開啟時嘗試上傳之前離線的資料
     };
 
+    // 初始化本機資料庫 (LocalStorage)
+    function initDatabase() {
+        if (!localStorage.getItem('uidMappingDb')) {
+            // 預設給一個測試用綁定，方便你一開始測試
+            localStorage.setItem('uidMappingDb', JSON.stringify({
+                '04:3A:F0:02:43:70:81': 'A棟 1F 大廳'
+            }));
+        }
+        if (!localStorage.getItem('patrolTasks')) {
+            localStorage.setItem('patrolTasks', JSON.stringify([])); // 儲存任務清單
+        }
+    }
+
+    // ==========================================
+    // 2. 畫面切換與導航邏輯 (SPA 核心)
+    // ==========================================
+    function switchView(viewId, title) {
+        // 隱藏所有畫面
+        document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+        // 顯示目標畫面
+        document.getElementById(viewId).classList.add('active');
+        
+        // 設定標題與返回鍵
+        document.getElementById('headerTitle').innerText = title;
+        const btnBack = document.getElementById('btnBack');
+        
+        if (viewId === 'view-role') {
+            btnBack.style.display = 'none';
+            viewHistory = [];
+        } else if (viewId === 'view-patrol-home') {
+            // 巡邏員首頁的返回鍵指向角色選擇
+            btnBack.style.display = 'block';
+            btnBack.onclick = () => switchView('view-role', '大樓巡邏系統');
+            loadPatrolTasks(); // 載入任務
+        } else if (viewId === 'view-route-add') {
+            btnBack.style.display = 'block';
+            btnBack.onclick = () => switchView('view-patrol-home', '巡邏任務管理');
+            renderRoutes(routesData); // 載入所有路線供選擇
+        } else if (viewId === 'view-patrol-exec') {
+            btnBack.style.display = 'block';
+            btnBack.onclick = () => switchView('view-patrol-home', '巡邏任務管理');
+            updatePatrolUI(); // 更新巡邏畫面
+        } else if (viewId === 'view-admin') {
+            btnBack.style.display = 'block';
+            btnBack.onclick = () => switchView('view-role', '大樓巡邏系統');
+            document.getElementById('adminResult').style.display = 'none';
+            hideMsg('adminMsg');
+        }
+    }
+
+    // ==========================================
+    // 3. 管理員模式 (綁定晶片)
+    // ==========================================
+    function renderAdminDropdown() {
+        const select = document.getElementById('adminLocationSelect');
+        select.innerHTML = '<option value="">-- 請選擇分配地點 --</option>';
+        allLocations.forEach(loc => {
+            select.innerHTML += `<option value="${loc}">${loc}</option>`;
+        });
+    }
+
+    let adminScannedUid = "";
+
+    async function adminScanNfc() {
+        const btn = document.getElementById('adminScanBtn');
+        try {
+            nfcReader = new NDEFReader();
+            await nfcReader.scan();
+            btn.innerText = "⏳ 正在感應...";
+            btn.className = "btn btn-warning";
+            hideMsg('adminMsg');
+
+            nfcReader.onreading = event => {
+                adminScannedUid = event.serialNumber;
+                const db = JSON.parse(localStorage.getItem('uidMappingDb'));
+                const currentLoc = db[adminScannedUid] || "尚未綁定任何地點";
+                
+                document.getElementById('adminUidDisplay').innerText = adminScannedUid;
+                document.getElementById('adminCurrentLoc').innerText = currentLoc;
+                document.getElementById('adminLocationSelect').value = db[adminScannedUid] || "";
+                
+                document.getElementById('adminResult').style.display = 'block';
+                showMsg('adminMsg', `✅ 讀取成功！請確認或更新綁定。`, 'success');
+                resetAdminBtn();
+                nfcReader.abort();
+            };
+            
+            nfcReader.onreadingerror = () => {
+                showMsg('adminMsg', "⚠️ 讀取失敗，請重新感應。", "error");
+                resetAdminBtn();
+            };
+        } catch (error) {
+            showMsg('adminMsg', "❌ 設備不支援 NFC 或權限不足。", "error");
+            resetAdminBtn();
+        }
+    }
+
+    function resetAdminBtn() {
+        const btn = document.getElementById('adminScanBtn');
+        btn.innerText = "📲 重新掃描晶片";
+        btn.className = "btn btn-primary";
+    }
+
+    function adminUpdateMapping() {
+        const selectedLoc = document.getElementById('adminLocationSelect').value;
+        if (!selectedLoc) {
+            showMsg('adminMsg', "❌ 請先從下拉選單選擇一個地點", "error");
+            return;
+        }
+        
+        let db = JSON.parse(localStorage.getItem('uidMappingDb'));
+        db[adminScannedUid] = selectedLoc; // 寫入綁定
+        localStorage.setItem('uidMappingDb', JSON.stringify(db));
+        
+        document.getElementById('adminCurrentLoc').innerText = selectedLoc;
+        showMsg('adminMsg', `✅ 更新成功！晶片已綁定至「${selectedLoc}」`, 'success');
+    }
+
+    // ==========================================
+    // 4. 巡邏員模式 (任務與清單)
+    // ==========================================
     function renderRoutes(routes) {
         const list = document.getElementById('routeList');
         list.innerHTML = '';
         routes.forEach(route => {
-            const li = document.createElement('li');
-            li.className = 'route-item';
-            li.innerText = route.name;
-            li.onclick = () => selectRoute(li, route);
-            list.appendChild(li);
+            const div = document.createElement('div');
+            div.className = 'route-item';
+            div.innerHTML = `<strong>${route.name}</strong><br><small>共 ${route.points.length} 個巡邏點</small>`;
+            div.onclick = () => createNewTask(route);
+            list.appendChild(div);
         });
     }
 
@@ -132,190 +310,188 @@
         renderRoutes(filtered);
     }
 
-    function selectRoute(element, route) {
-        document.querySelectorAll('.route-item').forEach(el => el.classList.remove('selected'));
-        element.classList.add('selected');
-        selectedRoute = route;
-    }
-
-    // ==========================================
-    // 3. 巡邏邏輯與防呆機制
-    // ==========================================
-    function startPatrol() {
-        if (!selectedRoute) {
-            alert("請先點選一條巡邏路線！");
-            return;
-        }
-        document.getElementById('routeSelection').style.display = 'none';
-        document.getElementById('patrolExecution').style.display = 'block';
-        document.getElementById('currentRouteTitle').innerText = selectedRoute.name;
+    function createNewTask(routeTemplate) {
+        let tasks = JSON.parse(localStorage.getItem('patrolTasks'));
         
-        currentPointIndex = 0;
-        updateUIForCurrentPoint();
+        // 建立新任務進度檔
+        const newTask = {
+            taskId: Date.now().toString(), // 用時間戳記當唯一ID
+            routeName: routeTemplate.name,
+            points: routeTemplate.points,
+            currentPointIndex: 0,
+            status: 'incomplete', // incomplete 或 completed
+            startTime: new Date().toLocaleString()
+        };
+        
+        tasks.unshift(newTask); // 加到清單最前面
+        localStorage.setItem('patrolTasks', JSON.stringify(tasks));
+        
+        // 直接開始這個任務
+        resumeTask(newTask.taskId);
     }
 
-    function updateUIForCurrentPoint() {
-        if (currentPointIndex >= selectedRoute.points.length) {
-            // 路線巡邏完畢
-            document.getElementById('patrolExecution').innerHTML = `
-                <h2 style="color: #28a745;">🎉 巡邏完成！</h2>
-                <p>路線：${selectedRoute.name} 已全部巡視完畢。</p>
-                <button class="btn-start" onclick="location.reload()">返回首頁</button>
+    function loadPatrolTasks() {
+        const tasks = JSON.parse(localStorage.getItem('patrolTasks')) || [];
+        const incList = document.getElementById('incompleteTasksList');
+        const comList = document.getElementById('completedTasksList');
+        
+        incList.innerHTML = ''; comList.innerHTML = '';
+        
+        tasks.forEach(task => {
+            const html = `
+                <div class="task-item ${task.status === 'completed' ? 'completed' : ''}" onclick="resumeTask('${task.taskId}')">
+                    <div class="task-info">
+                        <h4>${task.routeName}</h4>
+                        <p>${task.status === 'completed' ? '✅ 已完成' : `⏳ 進度: ${task.currentPointIndex} / ${task.points.length}`} | ${task.startTime}</p>
+                    </div>
+                    <div>${task.status === 'completed' ? '查看' : '繼續 ➡️'}</div>
+                </div>
             `;
-            return;
-        }
-        
-        const targetPoint = selectedRoute.points[currentPointIndex];
-        document.getElementById('pointIndex').innerText = currentPointIndex + 1;
-        document.getElementById('currentTargetName').innerText = targetPoint.name;
-        hideMessage();
+            if (task.status === 'completed') {
+                comList.innerHTML += html;
+            } else {
+                incList.innerHTML += html;
+            }
+        });
+
+        if(incList.innerHTML === '') incList.innerHTML = '<p style="color:#666; font-size:14px; margin-left:5px;">目前沒有未完成的任務。</p>';
     }
 
     // ==========================================
-    // 4. NFC 掃描與比對
+    // 5. 巡邏執行中 (中斷續傳與防呆)
     // ==========================================
-    async function scanNfc() {
-        if (!("NDEFReader" in window)) {
-            showMessage("❌ 設備不支援 NFC，請使用 Android Chrome。", "error");
+    function resumeTask(taskId) {
+        const tasks = JSON.parse(localStorage.getItem('patrolTasks'));
+        currentActiveTask = tasks.find(t => t.taskId === taskId);
+        
+        if (currentActiveTask.status === 'completed') {
+            alert("此路線已巡邏完畢！");
             return;
         }
+        switchView('view-patrol-exec', currentActiveTask.routeName);
+    }
 
+    function updatePatrolUI() {
+        if (currentActiveTask.currentPointIndex >= currentActiveTask.points.length) {
+            // 任務完成
+            completeCurrentTask();
+            return;
+        }
+        hideMsg('patrolMsg');
+        document.getElementById('pointIndex').innerText = currentActiveTask.currentPointIndex + 1;
+        document.getElementById('currentTargetName').innerText = currentActiveTask.points[currentActiveTask.currentPointIndex];
+    }
+
+    async function patrolScanNfc() {
         const btn = document.getElementById('scanBtn');
-        btn.innerText = "⏳ 請將手機靠近晶片...";
-        btn.style.backgroundColor = "#ffc107"; // 變成黃色提示感應中
-
         try {
             nfcReader = new NDEFReader();
             await nfcReader.scan();
-            
+            btn.innerText = "⏳ 靠近晶片中...";
+            btn.className = "btn btn-warning";
+            hideMsg('patrolMsg');
+
             nfcReader.onreading = event => {
-                const scannedUid = event.serialNumber;
-                verifyPoint(scannedUid);
-                nfcReader.abort(); // 讀到一次就停止，避免重複觸發
-                resetScanBtn();
+                verifyPatrolPoint(event.serialNumber);
+                nfcReader.abort();
+                resetPatrolBtn();
             };
-            
             nfcReader.onreadingerror = () => {
-                showMessage("⚠️ 讀取不完整，請重新感應。", "error");
-                resetScanBtn();
+                showMsg('patrolMsg', "⚠️ 讀取失敗，請重試。", "error");
+                resetPatrolBtn();
             };
         } catch (error) {
-            showMessage("❌ 啟動 NFC 失敗: " + error.message, "error");
-            resetScanBtn();
+            showMsg('patrolMsg', "❌ 設備不支援 NFC。", "error");
+            resetPatrolBtn();
         }
     }
 
-    function resetScanBtn() {
+    function resetPatrolBtn() {
         const btn = document.getElementById('scanBtn');
         btn.innerText = "📲 感應 NFC 晶片";
-        btn.style.backgroundColor = "#28a745";
+        btn.className = "btn btn-success";
     }
 
-    function verifyPoint(scannedUid) {
-        const targetPoint = selectedRoute.points[currentPointIndex];
+    function verifyPatrolPoint(scannedUid) {
+        // 從本機資料庫反查這個晶片屬於哪個地點
+        const db = JSON.parse(localStorage.getItem('uidMappingDb'));
+        const scannedLocationName = db[scannedUid]; 
+        const targetLocationName = currentActiveTask.points[currentActiveTask.currentPointIndex];
 
-        // 1. 成功比對：確實是當前要求的目標點
-        if (scannedUid === targetPoint.uid) {
-            savePatrolLog(targetPoint.name, scannedUid, "✅ 正常打卡");
-            showMessage(`✅ 成功打卡：${targetPoint.name}`, "success");
-            currentPointIndex++;
-            setTimeout(updateUIForCurrentPoint, 1500); // 1.5秒後切換下一個點
+        if (!scannedLocationName) {
+            showMsg('patrolMsg', `❌ 未知晶片！<br>此晶片尚未被管理員綁定任何地點。<br><small>UID: ${scannedUid}</small>`, "error");
             return;
         }
 
-        // 2. 錯誤比對：掃到了別的點，找出是哪一個
-        const wrongPointIndex = selectedRoute.points.findIndex(p => p.uid === scannedUid);
-        
-        if (wrongPointIndex !== -1) {
-            const wrongPoint = selectedRoute.points[wrongPointIndex];
-            if (wrongPointIndex > currentPointIndex) {
-                showMessage(`❌ 順序錯誤！<br>這是下一個(或之後)的點「${wrongPoint.name}」。<br><br>請先回去掃描目前的目標「${targetPoint.name}」。<br><small>若目前目標晶片故障，請點擊下方的跳過按鈕。</small>`, "error");
-            } else {
-                showMessage(`❌ 重複掃描！<br>「${wrongPoint.name}」剛剛已經巡過了。<br><br>現時目標為「${targetPoint.name}」。`, "error");
-            }
+        if (scannedLocationName === targetLocationName) {
+            // 成功比對
+            showMsg('patrolMsg', `✅ 成功打卡：${targetLocationName}`, "success");
+            saveTaskProgress();
         } else {
-            showMessage(`❌ 未知晶片！這顆晶片不屬於這條路線。<br>UID: ${scannedUid}`, "error");
+            // 掃錯點了，防呆機制
+            showMsg('patrolMsg', `❌ 地點錯誤！<br>您掃描到的是「${scannedLocationName}」。<br>目前目標是「${targetLocationName}」。`, "error");
         }
     }
 
     function skipCurrentPoint() {
-        const targetPoint = selectedRoute.points[currentPointIndex];
-        if(confirm(`確定要跳過「${targetPoint.name}」嗎？\n這將在紀錄中標示為異常。`)) {
-            savePatrolLog(targetPoint.name, "N/A", "⚠️ 異常跳過");
-            showMessage(`已跳過：${targetPoint.name}`, "success");
-            currentPointIndex++;
-            setTimeout(updateUIForCurrentPoint, 1000);
+        if(confirm(`確定要跳過「${currentActiveTask.points[currentActiveTask.currentPointIndex]}」嗎？`)) {
+            showMsg('patrolMsg', `已跳過`, "success");
+            saveTaskProgress();
         }
     }
 
-    // ==========================================
-    // 5. 離線儲存與自動同步機制
-    // ==========================================
-    function savePatrolLog(pointName, uid, status) {
-        const log = {
-            routeName: selectedRoute.name,
-            pointName: pointName,
-            uid: uid,
-            status: status,
-            time: new Date().toLocaleString()
-        };
+    function saveTaskProgress() {
+        currentActiveTask.currentPointIndex++;
+        
+        // 儲存進度到 localStorage
+        let tasks = JSON.parse(localStorage.getItem('patrolTasks'));
+        let taskIndex = tasks.findIndex(t => t.taskId === currentActiveTask.taskId);
+        tasks[taskIndex] = currentActiveTask;
+        localStorage.setItem('patrolTasks', JSON.stringify(tasks));
 
-        // 讀取目前的離線佇列
-        let offlineQueue = JSON.parse(localStorage.getItem('patrolLogs')) || [];
-        offlineQueue.push(log);
-        localStorage.setItem('patrolLogs', JSON.stringify(offlineQueue));
-
-        // 嘗試上傳
-        syncOfflineLogs();
+        setTimeout(updatePatrolUI, 1200);
     }
 
-    function syncOfflineLogs() {
-        let offlineQueue = JSON.parse(localStorage.getItem('patrolLogs')) || [];
-        const statusDiv = document.getElementById('networkStatus');
-
-        if (navigator.onLine) {
-            if (offlineQueue.length > 0) {
-                statusDiv.className = "online";
-                statusDiv.innerText = `🟢 網路正常，正在上傳 ${offlineQueue.length} 筆紀錄...`;
-                
-                // 【開發提示】未來這裡替換成 Firebase 的上傳程式碼
-                console.log("上傳資料到雲端:", offlineQueue);
-                
-                // 模擬上傳成功後，清空本機儲存
-                setTimeout(() => {
-                    localStorage.removeItem('patrolLogs');
-                    statusDiv.innerText = "🟢 網路正常，所有紀錄已上傳雲端";
-                }, 1000);
-            } else {
-                statusDiv.className = "online";
-                statusDiv.innerText = "🟢 網路連線正常";
-            }
-        } else {
-            statusDiv.className = "offline";
-            statusDiv.innerText = `🔴 離線模式，已暫存 ${offlineQueue.length} 筆紀錄`;
-        }
+    function completeCurrentTask() {
+        let tasks = JSON.parse(localStorage.getItem('patrolTasks'));
+        let taskIndex = tasks.findIndex(t => t.taskId === currentActiveTask.taskId);
+        tasks[taskIndex].status = 'completed'; // 標記為完成
+        localStorage.setItem('patrolTasks', JSON.stringify(tasks));
+        
+        document.getElementById('view-patrol-exec').innerHTML = `
+            <div class="card" style="text-align: center; border: 2px solid #28a745;">
+                <h2 style="color: #28a745;">🎉 巡邏完成！</h2>
+                <p>路線已全部巡視完畢，資料已自動記錄。</p>
+                <button class="btn btn-primary" onclick="switchView('view-patrol-home', '巡邏任務管理')">返回任務列表</button>
+            </div>
+        `;
     }
 
-    // 監聽網路狀態改變
-    window.addEventListener('online', () => {
-        showMessage("🌐 網路已恢復，正在同步資料...", "success");
-        syncOfflineLogs();
-    });
-    window.addEventListener('offline', () => {
-        syncOfflineLogs();
-    });
-
     // ==========================================
-    // 工具函數：訊息顯示
+    // 6. 共用工具函數
     // ==========================================
-    function showMessage(htmlText, type) {
-        const box = document.getElementById('messageBox');
+    function showMsg(elementId, htmlText, type) {
+        const box = document.getElementById(elementId);
         box.style.display = 'block';
-        box.className = type === 'error' ? 'msg-error' : 'msg-success';
+        box.className = type === 'error' ? 'msg-box msg-error' : 'msg-box msg-success';
         box.innerHTML = htmlText;
     }
-    function hideMessage() {
-        document.getElementById('messageBox').style.display = 'none';
+    function hideMsg(elementId) {
+        document.getElementById(elementId).style.display = 'none';
+    }
+
+    function checkNetworkStatus() {
+        const updateStatus = () => {
+            const el = document.getElementById('networkStatus');
+            if (navigator.onLine) {
+                el.className = "online"; el.innerText = "🟢 網路連線正常 (資料將於背景同步)";
+            } else {
+                el.className = "offline"; el.innerText = "🔴 離線模式 (巡邏資料與中斷進度已安全暫存於手機)";
+            }
+        };
+        window.addEventListener('online', updateStatus);
+        window.addEventListener('offline', updateStatus);
+        updateStatus();
     }
 </script>
 
