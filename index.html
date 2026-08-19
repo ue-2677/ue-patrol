@@ -138,7 +138,10 @@
 
         function initAppDB() {
             if (!localStorage.getItem('routesData')) {
-                localStorage.setItem('routesData', JSON.stringify([{ id: 'R01', name: 'A棟 夜間全區巡邏', points: ['A棟 1F 大廳', 'A棟 B1 機電房', 'A棟 RF 頂樓'] }]));
+                localStorage.setItem('routesData', JSON.stringify([
+                    { id: 'R01', name: 'A棟 夜間全區巡邏', points: ['A棟 1F 大廳', 'A棟 B1 機電房', 'A棟 RF 頂樓'], isActive: true, routeOrder: 1 },
+                    { id: 'R02', name: 'B棟 走廊巡視', points: ['B棟 1F 後門', 'B棟 5F 走廊'], isActive: true, routeOrder: 2 }
+                ]));
             }
             if (!localStorage.getItem('usersDB')) {
                 localStorage.setItem('usersDB', JSON.stringify({'guard': { password: '1234', role: 'user', name: '早班-陳員' },'admin': { password: '1234', role: 'admin', name: '總幹事' }}));
@@ -205,10 +208,26 @@
             }
         }
 
+        // =====================================
+        // 更新：過濾未啟用路線並依照編號排序
+        // =====================================
         function renderRoutes(keyword = '') {
             const list = document.getElementById('routeList'); list.innerHTML = '';
             let routes = JSON.parse(localStorage.getItem('routesData')) || [];
+            
+            // 1. 只顯示有打勾啟用的路線
+            routes = routes.filter(r => r.isActive !== false);
+            
+            // 2. 依照後台設定的排序編號 (由小到大) 進行排列
+            routes.sort((a, b) => (a.routeOrder || 999) - (b.routeOrder || 999));
+            
+            // 3. 搜尋過濾
             if(keyword) routes = routes.filter(r => r.name.toLowerCase().includes(keyword.toLowerCase()));
+            
+            if (routes.length === 0) {
+                list.innerHTML = '<p style="text-align:center; color:#999; margin-top:20px;">目前沒有可用的巡邏路線。</p>';
+            }
+
             routes.forEach(route => {
                 const div = document.createElement('div'); div.className = 'route-item';
                 div.innerHTML = `<strong>${route.name}</strong><br><small>共 ${route.points.length} 個點</small>`;
@@ -216,6 +235,7 @@
                 list.appendChild(div);
             });
         }
+
         function filterRoutes() { renderRoutes(document.getElementById('searchInput').value); }
 
         function createNewTask(routeTemplate) {
