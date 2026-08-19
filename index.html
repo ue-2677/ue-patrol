@@ -39,6 +39,14 @@
         .msg-box { margin-top: 15px; padding: 15px; border-radius: 8px; font-weight: bold; display: none; line-height: 1.5; font-size: 14px; }
         .msg-error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         .msg-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .badge { padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; display: inline-block; }
+        .badge-success { background-color: #d4edda; color: #155724; }
+        .badge-danger { background-color: #f8d7da; color: #721c24; }
+        
+        /* 彈窗樣式 */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; padding: 20px; border-radius: 10px; width: 90%; max-height: 85vh; overflow-y: auto; }
     </style>
 </head>
 <body>
@@ -132,6 +140,15 @@
         </div>
     </div>
 
+    <!-- 彈窗：任務點位明細 (前台共用) -->
+    <div id="taskDetailModal" class="modal">
+        <div class="modal-content">
+            <h3 id="taskDetailTitle" style="margin-top:0;">任務明細</h3>
+            <div id="taskDetailContent"></div>
+            <button class="btn btn-primary" style="margin-top: 15px;" onclick="document.getElementById('taskDetailModal').classList.remove('active')">關閉</button>
+        </div>
+    </div>
+
     <script>
         let currentActiveTask = null; 
         let nfcReader = null;
@@ -208,26 +225,14 @@
             }
         }
 
-        // =====================================
-        // 更新：過濾未啟用路線並依照編號排序
-        // =====================================
         function renderRoutes(keyword = '') {
             const list = document.getElementById('routeList'); list.innerHTML = '';
             let routes = JSON.parse(localStorage.getItem('routesData')) || [];
-            
-            // 1. 只顯示有打勾啟用的路線
             routes = routes.filter(r => r.isActive !== false);
-            
-            // 2. 依照後台設定的排序編號 (由小到大) 進行排列
             routes.sort((a, b) => (a.routeOrder || 999) - (b.routeOrder || 999));
-            
-            // 3. 搜尋過濾
             if(keyword) routes = routes.filter(r => r.name.toLowerCase().includes(keyword.toLowerCase()));
             
-            if (routes.length === 0) {
-                list.innerHTML = '<p style="text-align:center; color:#999; margin-top:20px;">目前沒有可用的巡邏路線。</p>';
-            }
-
+            if (routes.length === 0) list.innerHTML = '<p style="text-align:center; color:#999;">沒有可用的路線。</p>';
             routes.forEach(route => {
                 const div = document.createElement('div'); div.className = 'route-item';
                 div.innerHTML = `<strong>${route.name}</strong><br><small>共 ${route.points.length} 個點</small>`;
@@ -235,16 +240,22 @@
                 list.appendChild(div);
             });
         }
-
         function filterRoutes() { renderRoutes(document.getElementById('searchInput').value); }
 
+        // =====================================
+        // 時間記錄與狀態初始化
+        // =====================================
         function createNewTask(routeTemplate) {
             let tasks = JSON.parse(localStorage.getItem('patrolTasks')) || [];
             const user = JSON.parse(localStorage.getItem('currentUser')) || { name: '匿名保全' };
             const newTask = {
                 taskId: 'TASK_' + Date.now().toString() + '_' + Math.random().toString(36).substr(2, 5), 
                 routeName: routeTemplate.name, points: routeTemplate.points, currentPointIndex: 0,
-                skippedPoints: [], status: 'incomplete', guardName: user.name, startTime: new Date().toLocaleString()
+                skippedPoints: [], 
+                pointLogs: [], // 🔴 儲存每一個點的詳細時間紀錄
+                status: 'incomplete', guardName: user.name, 
+                startTime: new Date().toLocaleString(),
+                startTimestamp: Date.now() // 🔴 用於精確計算時間差
             };
             tasks.unshift(newTask); localStorage.setItem('patrolTasks', JSON.stringify(tasks));
             resumeTask(newTask.taskId);
@@ -256,10 +267,10 @@
             incList.innerHTML = ''; comList.innerHTML = '';
             allTasks.forEach(task => {
                 const skipWarning = (task.skippedPoints && task.skippedPoints.length > 0) ? `<span style="color:red; font-weight:bold;"> (⚠️ 跳過 ${task.skippedPoints.length} 點)</span>` : '';
-                const html = `<div class="task-item ${task.status === 'completed' ? 'completed' : ''}" onclick="resumeTask('${task.taskId}')">
+                const html = `<div class="task-item ${task.status === 'completed' ? 'completed' : ''}" onclick="viewTaskDetail('${task.taskId}')">
                     <div class="task-info"><h4>${task.routeName} ${skipWarning}</h4><p>${task.status === 'completed' ? '✅ 已完成' : `⏳ 進度: ${task.currentPointIndex} / ${task.points.length}`}</p>
                     <p style="font-size:11px; color:#999;">人員: ${task.guardName} | ${task.startTime}</p></div>
-                    <div>${task.status === 'completed' ? '查看' : '繼續 ➡️'}</div></div>`;
+                    <div>${task.status === 'completed' ? '查看' : '<button class="btn btn-warning" style="padding:5px 10px; font-size:12px;" onclick="event.stopPropagation(); resumeTask(\''+task.taskId+'\')">繼續</button>'}</div></div>`;
                 if (task.status === 'completed') comList.innerHTML += html; else incList.innerHTML += html;
             });
             if(incList.innerHTML === '') incList.innerHTML = '<p style="color:#666; font-size:14px;">無未完成任務。</p>';
@@ -297,11 +308,26 @@
             if(confirm(`確定要跳過「${currentPt}」嗎？\n這將在後台標記為異常。`)) { showMsg('patrolMsg', `⚠️ 已記錄跳過`, "success"); saveTaskProgress(true); }
         }
 
+        // =====================================
+        // 精準時間寫入邏輯
+        // =====================================
         function saveTaskProgress(isSkipped) {
+            const currentPtName = currentActiveTask.points[currentActiveTask.currentPointIndex];
+            
             if (isSkipped) {
                 if (!currentActiveTask.skippedPoints) currentActiveTask.skippedPoints = [];
-                currentActiveTask.skippedPoints.push(currentActiveTask.points[currentActiveTask.currentPointIndex]);
+                currentActiveTask.skippedPoints.push(currentPtName);
             }
+            
+            // 🔴 儲存當前點位的打卡精準時間
+            if (!currentActiveTask.pointLogs) currentActiveTask.pointLogs = [];
+            currentActiveTask.pointLogs.push({
+                pointName: currentPtName,
+                isSkipped: isSkipped,
+                timeStr: new Date().toLocaleTimeString('zh-TW', { hour12: false }), // 例如: 14:30:05
+                timestamp: Date.now() // 精確的毫秒數，用於計算時間差
+            });
+
             currentActiveTask.currentPointIndex++;
             let tasks = JSON.parse(localStorage.getItem('patrolTasks'));
             let taskIndex = tasks.findIndex(t => t.taskId === currentActiveTask.taskId);
@@ -315,6 +341,72 @@
             let taskIndex = tasks.findIndex(t => t.taskId === currentActiveTask.taskId);
             tasks[taskIndex].status = 'completed'; localStorage.setItem('patrolTasks', JSON.stringify(tasks));
             document.getElementById('patrolActiveUI').style.display = 'none'; document.getElementById('patrolCompleteUI').style.display = 'block';
+        }
+
+        // =====================================
+        // 彈出式明細表 (含精算時間差距功能)
+        // =====================================
+        function viewTaskDetail(taskId) {
+            const tasks = JSON.parse(localStorage.getItem('patrolTasks')) || [];
+            const task = tasks.find(t => t.taskId === taskId);
+            if (!task) return;
+
+            document.getElementById('taskDetailTitle').innerText = `📋 ${task.routeName}`;
+            const logs = task.pointLogs || [];
+            
+            // 計算總耗時
+            let totalTimeHtml = '<span style="color:#999; font-size:12px;">尚未完成</span>';
+            if (task.startTimestamp && logs.length > 0) {
+                const totalSec = Math.floor((logs[logs.length - 1].timestamp - task.startTimestamp) / 1000);
+                const m = Math.floor(totalSec / 60); const s = totalSec % 60;
+                totalTimeHtml = `<strong style="color:var(--primary); font-size: 16px;">${m} 分 ${s} 秒</strong>`;
+            }
+
+            let html = `
+                <div style="background:#f8f9fa; padding:12px; border-radius:8px; margin-bottom:15px; border: 1px solid #eee; display:flex; justify-content:space-between;">
+                    <div><p style="margin:0 0 5px 0; font-size:13px;"><strong>人員：</strong> ${task.guardName || '未登記'}</p>
+                    <p style="margin:0; font-size:13px;"><strong>開始：</strong> ${task.startTime}</p></div>
+                    <div style="text-align:right;"><p style="margin:0 0 5px 0; font-size:13px;"><strong>總耗時：</strong></p>${totalTimeHtml}</div>
+                </div>
+                <div style="max-height: 350px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px;">
+                    <table style="width:100%; border-collapse:collapse; text-align:left; font-size:12px;">
+                        <thead style="position: sticky; top: 0; background: #f0f2f5; z-index: 1;">
+                            <tr><th style="padding:8px; border-bottom:1px solid #ddd;">巡邏點</th><th style="padding:8px; border-bottom:1px solid #ddd;">打卡時間</th><th style="padding:8px; border-bottom:1px solid #ddd;">距上點耗時</th></tr>
+                        </thead><tbody>
+            `;
+
+            let previousTimestamp = task.startTimestamp;
+
+            task.points.forEach((pt, idx) => {
+                const log = logs.find(l => l.pointName === pt);
+                let statusIcon = '⏳', timeStr = '-', gapStr = '-';
+                
+                if (log) {
+                    timeStr = log.timeStr;
+                    if (previousTimestamp) {
+                        const gapSec = Math.floor((log.timestamp - previousTimestamp) / 1000);
+                        const gm = Math.floor(gapSec / 60), gs = gapSec % 60;
+                        gapStr = gm > 0 ? `<span style="color:#1a73e8; font-weight:bold;">${gm}分${gs}秒</span>` : `${gs}秒`;
+                    }
+                    previousTimestamp = log.timestamp;
+                    statusIcon = log.isSkipped ? `🔴` : `🟢`;
+                } else if (task.skippedPoints && task.skippedPoints.includes(pt)) {
+                    statusIcon = `🔴`;
+                } else if (idx < task.currentPointIndex) {
+                    statusIcon = `🟢`;
+                }
+
+                html += `
+                    <tr style="border-bottom:1px solid #eee;">
+                        <td style="padding:8px; font-weight:bold;">${statusIcon} ${pt}</td>
+                        <td style="padding:8px; font-family:monospace; color:#555;">${timeStr}</td>
+                        <td style="padding:8px;">${gapStr}</td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table></div>';
+            document.getElementById('taskDetailContent').innerHTML = html;
+            document.getElementById('taskDetailModal').classList.add('active');
         }
 
         let adminScannedUid = "";
