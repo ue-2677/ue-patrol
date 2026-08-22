@@ -95,7 +95,6 @@
 
         <!-- 視圖 2：管理員晶片綁定 -->
         <div id="view-admin" class="view-section">
-            <!-- 模式切換按鈕 -->
             <div style="display: flex; gap: 10px; margin-bottom: 15px;">
                 <button id="btnModeSingle" class="btn btn-primary" style="flex: 1;" onclick="window.switchAdminBindingMode('single')">🔍 單點掃描模式</button>
                 <button id="btnModeRoute" class="btn btn-secondary" style="flex: 1;" onclick="window.switchAdminBindingMode('route')">🗺️ 路線連續模式</button>
@@ -128,14 +127,10 @@
                         <h3 id="adminRouteCurrentPointName" style="margin: 0; color: var(--primary); font-size: 24px;"></h3>
                         <p style="margin: 8px 0 0 0; font-size: 12px; color: #888;">當前綁定：<span id="adminRouteCurrentBound"></span></p>
                         
-                        <!-- ➕ 新增：顯示感應到的晶片 UID -->
                         <p id="adminRouteScannedUidText" style="display:none; margin: 10px 0 0 0; font-size: 15px; color: var(--danger); font-weight:bold;"></p>
                     </div>
                     
-                    <!-- 掃描按鈕 -->
                     <button class="btn btn-success" id="adminRouteScanBtn" onclick="window.adminRouteScanNfc()" style="padding: 15px; font-size: 18px;">📲 掃描此點的晶片</button>
-                    
-                    <!-- ➕ 新增：確認綁定按鈕 (預設隱藏) -->
                     <button class="btn btn-primary" id="adminRouteConfirmBtn" onclick="window.adminRouteConfirmBinding()" style="display: none; padding: 15px; font-size: 18px; width: 100%; box-shadow: 0 4px 10px rgba(26,115,232,0.3);">✅ 確認綁定此晶片</button>
 
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
@@ -221,16 +216,11 @@
         </div>
     </div>
 
-
-    <!-- ============================================== -->
-    <!-- Firebase SDK 與雲端核心邏輯 (Auth 企業級安全版) -->
-    <!-- ============================================== -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getFirestore, collection, addDoc, doc, updateDoc, onSnapshot, setDoc, query, orderBy, enableMultiTabIndexedDbPersistence, getDoc } 
         from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
         
-        // 🚨 載入 Firebase Auth 引擎模組
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } 
         from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
@@ -245,10 +235,9 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-        const auth = getAuth(app); // 啟動 Auth 引擎
-        const VIRTUAL_DOMAIN = "@patrol.com"; // 虛擬信箱網域
+        const auth = getAuth(app); 
+        const VIRTUAL_DOMAIN = "@patrol.com"; 
 
-        // 啟用離線模式
         enableMultiTabIndexedDbPersistence(db).catch((err) => { console.warn("離線模式啟用失敗：", err.code); });
 
         let dbUsers = {};
@@ -276,7 +265,6 @@
                     if (userDoc.exists()) {
                         currentUser = { username: username, ...userDoc.data() };
                         
-                        // 驗證成功，進入主畫面
                         document.getElementById('displayUserName').innerText = currentUser.name;
                         document.getElementById('displayUserRole').innerText = (currentUser.role === 'admin') ? '管理員' : '巡邏員';
                         
@@ -291,9 +279,8 @@
                         
                         window.switchView('view-role', '主選單');
                         initRealtimeListeners();
-                        window.checkNetworkStatus(); // 恢復正常的網路狀態顯示
+                        window.checkNetworkStatus(); 
                     } else {
-                        // 帳號被總幹事在後台刪除了，強制登出
                         auth.signOut();
                         alert("⚠️ 您的帳號權限已被移除，請聯絡管理員。");
                         window.switchView('view-login', '系統登入');
@@ -301,21 +288,17 @@
                 } catch (error) {
                     console.error("讀取權限失敗", error);
                     document.getElementById('networkStatus').innerText = "🔴 離線登入模式 (使用快取)";
-                    // 在完全斷網的極端情況下，如果 IndexedDB 有快取，讓他進去
                     if (currentUser) window.switchView('view-role', '主選單');
                 }
             } else {
-                // 沒有登入紀錄，顯示登入畫面
                 window.switchView('view-login', '系統登入');
                 window.checkNetworkStatus();
             }
         });
 
-        // 監控網路狀態
         window.checkNetworkStatus = function() {
             const updateStatus = () => {
                 const el = document.getElementById('networkStatus');
-                // 如果是在登入中，不要蓋掉登入訊息
                 if (el.innerText.includes("驗證成功") || el.innerText.includes("初始化")) return;
                 
                 if (navigator.onLine) { el.className = "online"; el.innerText = "🟢 網路連線正常 (資料自動同步)"; } 
@@ -326,9 +309,7 @@
             updateStatus();
         };
 
-        window.onload = () => { 
-            // 頁面載入時，onAuthStateChanged 會自動處理登入狀態，所以這裡不需做事
-        };
+        window.onload = () => {};
 
         function showMsg(id, text, type) { const b = document.getElementById(id); b.style.display = 'block'; b.className = `msg-box msg-${type}`; b.innerHTML = text; }
         function hideMsg(id) { document.getElementById(id).style.display = 'none'; }
@@ -346,9 +327,7 @@
             const virtualEmail = `${un}${VIRTUAL_DOMAIN}`;
             
             try {
-                // 呼叫 Firebase 伺服器進行加密驗證
                 await signInWithEmailAndPassword(auth, virtualEmail, pw);
-                // 成功後 onAuthStateChanged 會自動接手跳轉畫面
             } catch (error) {
                 console.error("登入失敗", error);
                 document.getElementById('networkStatus').className = "offline";
@@ -364,7 +343,7 @@
         window.processLogout = async function() {
             if(confirm("確定要登出系統嗎？")) { 
                 await auth.signOut(); 
-                localStorage.removeItem('cloudCurrentUser'); // 清除舊版殘留
+                localStorage.removeItem('cloudCurrentUser'); 
                 currentUser = null; 
             }
         };
@@ -392,13 +371,11 @@
             }
         };
 
-        // --- Firebase 即時監聽與核心邏輯 ---
         function initRealtimeListeners() {
             onSnapshot(collection(db, "users"), (snapshot) => {
                 dbUsers = {}; snapshot.forEach(doc => { dbUsers[doc.id] = doc.data(); });
             });
 
-            // ➕ 新增這段：即時監聽雲端的 points (基礎點位庫)
             onSnapshot(collection(db, "points"), (snapshot) => {
                 dbPoints = []; 
                 snapshot.forEach(doc => { dbPoints.push({ id: doc.id, ...doc.data() }); });
@@ -685,7 +662,7 @@
             document.getElementById('taskDetailModal').classList.add('active');
         };
 
-        // --- NFC 功能 ---
+        // --- NFC 功能 與 單點/路線綁定核心邏輯 ---
         function resetAdminBtn() {
             const btn = document.getElementById('adminScanBtn');
             btn.innerText = "📲 重新掃描晶片"; btn.className = "btn btn-primary";
@@ -693,20 +670,17 @@
 
         window.enterAdminMode = function() {
             if (currentUser && currentUser.role === 'admin') {
-                // 載入單點模式選單
                 const select = document.getElementById('adminLocationSelect');
                 select.innerHTML = '<option value="">-- 請選擇地點 --</option>';
                 let allPoints = dbPoints.map(pt => `${pt.floor || ''} ${pt.name || ''}`.trim());
                 [...new Set(allPoints)].forEach(loc => select.innerHTML += `<option value="${loc}">${loc}</option>`);
                 
-                // ➕ 載入路線連續模式選單
                 const routeSelect = document.getElementById('adminRouteSelect');
                 routeSelect.innerHTML = '<option value="">-- 請選擇路線 --</option>';
                 let activeRoutes = dbRoutes.filter(r => r.isActive !== false);
                 activeRoutes.sort((a, b) => (a.routeOrder || 999) - (b.routeOrder || 999));
                 activeRoutes.forEach(r => routeSelect.innerHTML += `<option value="${r.id}">${r.name}</option>`);
 
-                // 畫面初始化重置
                 window.switchAdminBindingMode('single');
                 document.getElementById('adminResult').style.display = 'none';
                 document.getElementById('adminRouteSelect').value = '';
@@ -739,13 +713,30 @@
                 resetAdminBtn(); 
             }
         };
+        
+        // 單點掃描模式：寫入資料庫功能
+        window.adminUpdateMapping = async function() {
+            const select = document.getElementById('adminLocationSelect');
+            const loc = select.value;
+            if (!adminScannedUid) { showMsg('adminMsg', "❌ 請先掃描晶片！", "error"); return; }
+            if (!loc) { showMsg('adminMsg', "❌ 請選擇要綁定的地點！", "error"); return; }
+            
+            try {
+                await setDoc(doc(db, "uidMappings", adminScannedUid), { locationName: loc });
+                showMsg('adminMsg', `✅ 成功綁定 UID: ${adminScannedUid} 到「${loc}」`, 'success');
+                document.getElementById('adminCurrentLoc').innerText = loc;
+            } catch(e) {
+                console.error(e);
+                showMsg('adminMsg', '❌ 儲存至雲端失敗，請檢查網路。', 'error');
+            }
+        };
 
         // ==========================================
         // 路線連續綁定模式核心邏輯
         // ==========================================
         let adminRoutePoints = [];
         let adminRouteCurrentIdx = 0;
-        let tempScannedUidForRoute = ""; // ➕ 暫存感應到的晶片 UID
+        let tempScannedUidForRoute = ""; 
 
         window.switchAdminBindingMode = function(mode) {
             hideMsg('adminMsg');
@@ -791,7 +782,6 @@
             document.getElementById('adminRoutePointTotal').innerText = adminRoutePoints.length;
             document.getElementById('adminRouteCurrentPointName').innerText = currentPointName;
             
-            // 檢查是否已綁定過 UID
             const boundUid = Object.keys(dbUidMappings).find(key => dbUidMappings[key] === currentPointName);
             const bindDisplay = document.getElementById('adminRouteCurrentBound');
             if (boundUid) {
@@ -802,7 +792,6 @@
                 bindDisplay.style.color = 'var(--danger)';
             }
 
-            // ➕ 重置 UI 狀態，等待掃描
             tempScannedUidForRoute = "";
             document.getElementById('adminRouteScannedUidText').style.display = 'none';
             const scanBtn = document.getElementById('adminRouteScanBtn');
@@ -826,9 +815,8 @@
                 
                 nfcReader.onreading = async event => {
                     nfcReader.abort();
-                    tempScannedUidForRoute = event.serialNumber; // 暫存 UID
+                    tempScannedUidForRoute = event.serialNumber; 
                     
-                    // ➕ 改變 UI：顯示感應到的 UID，隱藏掃描鍵，顯示確認鍵
                     document.getElementById('adminRouteScannedUidText').innerText = `已感應到新晶片: ${tempScannedUidForRoute}`;
                     document.getElementById('adminRouteScannedUidText').style.display = 'block';
                     
@@ -847,19 +835,16 @@
             }
         };
 
-        // ➕ 新增確認綁定的邏輯函數
         window.adminRouteConfirmBinding = async function() {
             if (!tempScannedUidForRoute) return;
             const currentPointName = adminRoutePoints[adminRouteCurrentIdx];
             
             try {
-                // 儲存綁定資訊至雲端
                 await setDoc(doc(db, "uidMappings", tempScannedUidForRoute), { locationName: currentPointName });
                 showMsg('adminMsg', `✅ 已成功將 UID 綁定至「${currentPointName}」`, 'success');
                 
                 document.getElementById('adminRouteConfirmBtn').innerText = "⏳ 儲存中...";
                 
-                // 成功後延遲 1 秒，自動前往下一個點
                 setTimeout(() => { 
                     document.getElementById('adminRouteConfirmBtn').innerText = "✅ 確認綁定此晶片";
                     window.adminRouteNextPoint(); 
@@ -869,16 +854,8 @@
                 showMsg('adminMsg', `❌ 綁定失敗，請確認網路連線。`, 'error');
             }
         };
-                nfcReader.onreadingerror = () => {
-                    showMsg('adminMsg', "⚠️ 讀取失敗，請重新感應。", "error");
-                    btn.innerText = "📲 掃描並綁定此點"; btn.className = "btn btn-success";
-                };
-            } catch (error) {
-                showMsg('adminMsg', "❌ 手機不支援 NFC 感應。", "error");
-                btn.innerText = "📲 掃描並綁定此點"; btn.className = "btn btn-success";
-            }
-        };
 
+        // --- 一般巡邏打卡功能 ---
         function resetPatrolBtn() {
             const btn = document.getElementById('scanBtn');
             btn.innerText = "📲 感應 NFC 晶片"; btn.className = "btn btn-success";
