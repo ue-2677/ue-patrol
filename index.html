@@ -95,7 +95,14 @@
 
         <!-- 視圖 2：管理員晶片綁定 -->
         <div id="view-admin" class="view-section">
-            <div class="card">
+            <!-- 模式切換按鈕 -->
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <button id="btnModeSingle" class="btn btn-primary" style="flex: 1;" onclick="window.switchAdminBindingMode('single')">🔍 單點掃描模式</button>
+                <button id="btnModeRoute" class="btn btn-secondary" style="flex: 1;" onclick="window.switchAdminBindingMode('route')">🗺️ 路線連續模式</button>
+            </div>
+
+            <!-- 單點掃描模式 UI -->
+            <div id="adminModeSingle" class="card">
                 <p>請將手機靠近牆壁上的 NFC 晶片，以檢測或重新綁定地點。</p>
                 <button class="btn btn-primary" id="adminScanBtn" onclick="window.adminScanNfc()">📲 掃描晶片</button>
                 <div id="adminResult" class="admin-result">
@@ -106,8 +113,30 @@
                     <select id="adminLocationSelect" class="form-control"></select>
                     <button class="btn btn-success" onclick="window.adminUpdateMapping()">儲存至雲端</button>
                 </div>
-                <div id="adminMsg" class="msg-box"></div>
             </div>
+
+            <!-- 路線連續綁定模式 UI -->
+            <div id="adminModeRoute" class="card" style="display: none;">
+                <p style="margin-top:0;">選擇要更新的路線，系統將引導您逐點感應綁定。</p>
+                <select id="adminRouteSelect" class="form-control" onchange="window.adminStartRouteBinding()">
+                    <option value="">-- 請選擇路線 --</option>
+                </select>
+                
+                <div id="adminRouteBindingUI" style="display: none; margin-top: 15px; text-align: center;">
+                    <div style="background: #e8f0fe; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <p style="margin: 0 0 5px 0; font-size: 14px; color: #666;">目前目標：第 <strong id="adminRoutePointIndex">1</strong> / <span id="adminRoutePointTotal">10</span> 點</p>
+                        <h3 id="adminRouteCurrentPointName" style="margin: 0; color: var(--primary); font-size: 24px;"></h3>
+                        <p style="margin: 8px 0 0 0; font-size: 12px; color: #888;">當前綁定：<span id="adminRouteCurrentBound"></span></p>
+                    </div>
+                    
+                    <button class="btn btn-success" id="adminRouteScanBtn" onclick="window.adminRouteScanNfc()" style="padding: 15px; font-size: 18px;">📲 掃描並綁定此點</button>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button class="btn btn-warning" style="flex: 1; padding: 12px; font-size: 15px;" onclick="window.adminRouteNextPoint()">⏭️ 略過換下一點</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="adminMsg" class="msg-box"></div>
         </div>
 
         <!-- 視圖 3：任務清單 -->
@@ -656,13 +685,25 @@
 
         window.enterAdminMode = function() {
             if (currentUser && currentUser.role === 'admin') {
+                // 載入單點模式選單
                 const select = document.getElementById('adminLocationSelect');
                 select.innerHTML = '<option value="">-- 請選擇地點 --</option>';
-                
-                // 🔄 修改這行：改成從 dbPoints 撈取所有基礎點位，並將樓層與名稱組合起來
                 let allPoints = dbPoints.map(pt => `${pt.floor || ''} ${pt.name || ''}`.trim());
-                
                 [...new Set(allPoints)].forEach(loc => select.innerHTML += `<option value="${loc}">${loc}</option>`);
+                
+                // ➕ 載入路線連續模式選單
+                const routeSelect = document.getElementById('adminRouteSelect');
+                routeSelect.innerHTML = '<option value="">-- 請選擇路線 --</option>';
+                let activeRoutes = dbRoutes.filter(r => r.isActive !== false);
+                activeRoutes.sort((a, b) => (a.routeOrder || 999) - (b.routeOrder || 999));
+                activeRoutes.forEach(r => routeSelect.innerHTML += `<option value="${r.id}">${r.name}</option>`);
+
+                // 畫面初始化重置
+                window.switchAdminBindingMode('single');
+                document.getElementById('adminResult').style.display = 'none';
+                document.getElementById('adminRouteSelect').value = '';
+                document.getElementById('adminRouteBindingUI').style.display = 'none';
+
                 window.switchView('view-admin', '晶片管理後台');
             } else { alert("🔒 權限不足！"); }
         };
@@ -691,14 +732,108 @@
             }
         };
 
-        window.adminUpdateMapping = async function() {
-            const selectedLoc = document.getElementById('adminLocationSelect').value;
-            if (!selectedLoc || !adminScannedUid) { showMsg('adminMsg', "❌ 請選擇地點", "error"); return; }
+        // ==========================================
+        // 路線連續綁定模式核心邏輯
+        // ==========================================
+        let adminRoutePoints = [];
+        let adminRouteCurrentIdx = 0;
+
+        window.switchAdminBindingMode = function(mode) {
+            hideMsg('adminMsg');
+            if (mode === 'single') {
+                document.getElementById('btnModeSingle').className = "btn btn-primary";
+                document.getElementById('btnModeRoute').className = "btn btn-secondary";
+                document.getElementById('adminModeSingle').style.display = "block";
+                document.getElementById('adminModeRoute').style.display = "none";
+            } else {
+                document.getElementById('btnModeSingle').className = "btn btn-secondary";
+                document.getElementById('btnModeRoute').className = "btn btn-primary";
+                document.getElementById('adminModeSingle').style.display = "none";
+                document.getElementById('adminModeRoute').style.display = "block";
+            }
+        };
+
+        window.adminStartRouteBinding = function() {
+            hideMsg('adminMsg');
+            const routeId = document.getElementById('adminRouteSelect').value;
+            if (!routeId) { document.getElementById('adminRouteBindingUI').style.display = 'none'; return; }
+            
+            const route = dbRoutes.find(r => r.id === routeId);
+            if (!route || !route.points || route.points.length === 0) {
+                alert("此路線目前沒有設定點位！");
+                document.getElementById('adminRouteBindingUI').style.display = 'none';
+                return;
+            }
+            adminRoutePoints = route.points;
+            adminRouteCurrentIdx = 0;
+            document.getElementById('adminRouteBindingUI').style.display = 'block';
+            window.adminRenderRoutePoint();
+        };
+
+        window.adminRenderRoutePoint = function() {
+            if (adminRouteCurrentIdx >= adminRoutePoints.length) {
+                document.getElementById('adminRouteBindingUI').style.display = 'none';
+                document.getElementById('adminRouteSelect').value = '';
+                showMsg('adminMsg', `🎉 恭喜！這條路線的所有點位都已確認/綁定完畢。`, 'success');
+                return;
+            }
+            const currentPointName = adminRoutePoints[adminRouteCurrentIdx];
+            document.getElementById('adminRoutePointIndex').innerText = adminRouteCurrentIdx + 1;
+            document.getElementById('adminRoutePointTotal').innerText = adminRoutePoints.length;
+            document.getElementById('adminRouteCurrentPointName').innerText = currentPointName;
+            
+            // 檢查是否已綁定過 UID
+            const boundUid = Object.keys(dbUidMappings).find(key => dbUidMappings[key] === currentPointName);
+            const bindDisplay = document.getElementById('adminRouteCurrentBound');
+            if (boundUid) {
+                bindDisplay.innerText = `UID: ${boundUid} (已綁定)`;
+                bindDisplay.style.color = 'var(--success)';
+            } else {
+                bindDisplay.innerText = '尚未綁定';
+                bindDisplay.style.color = 'var(--danger)';
+            }
+        };
+
+        window.adminRouteNextPoint = function() {
+            hideMsg('adminMsg');
+            adminRouteCurrentIdx++;
+            window.adminRenderRoutePoint();
+        };
+
+        window.adminRouteScanNfc = async function() {
+            const btn = document.getElementById('adminRouteScanBtn');
             try {
-                await setDoc(doc(db, "uidMappings", adminScannedUid), { locationName: selectedLoc });
-                document.getElementById('adminCurrentLoc').innerText = selectedLoc;
-                showMsg('adminMsg', `✅ 雲端更新成功！`, 'success');
-            } catch(e) { showMsg('adminMsg', `❌ 更新失敗`, 'error'); }
+                nfcReader = new NDEFReader(); await nfcReader.scan();
+                btn.innerText = "⏳ 靠近晶片感應中..."; btn.className = "btn btn-warning"; hideMsg('adminMsg');
+                
+                nfcReader.onreading = async event => {
+                    nfcReader.abort();
+                    const uid = event.serialNumber;
+                    const currentPointName = adminRoutePoints[adminRouteCurrentIdx];
+                    
+                    try {
+                        // 儲存綁定資訊至雲端
+                        await setDoc(doc(db, "uidMappings", uid), { locationName: currentPointName });
+                        showMsg('adminMsg', `✅ 已成功將 UID ${uid} 綁定至「${currentPointName}」`, 'success');
+                        
+                        btn.innerText = "📲 掃描並綁定此點"; btn.className = "btn btn-success";
+                        
+                        // 成功後延遲 1 秒，自動前往下一個點
+                        setTimeout(() => { window.adminRouteNextPoint(); }, 1000);
+                        
+                    } catch(e) {
+                        showMsg('adminMsg', `❌ 綁定失敗，請確認網路連線。`, 'error');
+                        btn.innerText = "📲 掃描並綁定此點"; btn.className = "btn btn-success";
+                    }
+                };
+                nfcReader.onreadingerror = () => {
+                    showMsg('adminMsg', "⚠️ 讀取失敗，請重新感應。", "error");
+                    btn.innerText = "📲 掃描並綁定此點"; btn.className = "btn btn-success";
+                };
+            } catch (error) {
+                showMsg('adminMsg', "❌ 手機不支援 NFC 感應。", "error");
+                btn.innerText = "📲 掃描並綁定此點"; btn.className = "btn btn-success";
+            }
         };
 
         function resetPatrolBtn() {
