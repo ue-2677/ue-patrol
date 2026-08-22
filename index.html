@@ -216,6 +216,7 @@
 
         let dbUsers = {};
         let dbRoutes = [];
+        let dbPoints = [];
         let dbUidMappings = {};
         let dbTasks = [];
         
@@ -358,6 +359,12 @@
         function initRealtimeListeners() {
             onSnapshot(collection(db, "users"), (snapshot) => {
                 dbUsers = {}; snapshot.forEach(doc => { dbUsers[doc.id] = doc.data(); });
+            });
+
+            // ➕ 新增這段：即時監聽雲端的 points (基礎點位庫)
+            onSnapshot(collection(db, "points"), (snapshot) => {
+                dbPoints = []; 
+                snapshot.forEach(doc => { dbPoints.push({ id: doc.id, ...doc.data() }); });
             });
 
             onSnapshot(collection(db, "routes"), (snapshot) => {
@@ -651,7 +658,10 @@
             if (currentUser && currentUser.role === 'admin') {
                 const select = document.getElementById('adminLocationSelect');
                 select.innerHTML = '<option value="">-- 請選擇地點 --</option>';
-                let allPoints = []; dbRoutes.forEach(r => { allPoints = allPoints.concat(r.points); });
+                
+                // 🔄 修改這行：改成從 dbPoints 撈取所有基礎點位，並將樓層與名稱組合起來
+                let allPoints = dbPoints.map(pt => `${pt.floor || ''} ${pt.name || ''}`.trim());
+                
                 [...new Set(allPoints)].forEach(loc => select.innerHTML += `<option value="${loc}">${loc}</option>`);
                 window.switchView('view-admin', '晶片管理後台');
             } else { alert("🔒 權限不足！"); }
