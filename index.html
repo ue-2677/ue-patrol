@@ -663,6 +663,18 @@
         };
 
         // --- NFC 功能 與 單點/路線綁定核心邏輯 ---
+       // ==========================================
+        // 📲 終極防卡死 NFC 核心模組 (使用 AbortController)
+        // ==========================================
+        let nfcAbortController = null;
+
+        function stopNfcScan() {
+            if (nfcAbortController) {
+                try { nfcAbortController.abort(); } catch(e){}
+                nfcAbortController = null;
+            }
+        }
+
         function resetAdminBtn() {
             const btn = document.getElementById('adminScanBtn');
             btn.innerText = "📲 重新掃描晶片"; btn.className = "btn btn-primary";
@@ -694,27 +706,25 @@
             const btn = document.getElementById('adminScanBtn');
             btn.innerText = "⏳ 啟動中...";
             try {
-                if (nfcReader) { try { nfcReader.abort(); } catch(e){} } // 踹醒卡死的感應器
-                nfcReader = new NDEFReader(); await nfcReader.scan();
+                stopNfcScan(); // 停止之前的感應，徹底防卡死
+                nfcAbortController = new AbortController();
+                nfcReader = new NDEFReader(); 
+                await nfcReader.scan({ signal: nfcAbortController.signal });
+
                 btn.innerText = "⏳ 正在感應..."; btn.className = "btn btn-warning"; hideMsg('adminMsg');
                 
                 nfcReader.onreading = event => {
-                    if (navigator.vibrate) navigator.vibrate(200); // 讀取成功手機震動
-                    adminScannedUid = event.serialNumber;
+                    stopNfcScan(); // 讀到後立刻中止硬體感應，避免重複觸發
+                    if (navigator.vibrate) navigator.vibrate(200); 
+
+                    adminScannedUid = event.serialNumber; 
                     document.getElementById('adminUidDisplay').innerText = adminScannedUid;
                     document.getElementById('adminCurrentLoc').innerText = dbUidMappings[adminScannedUid] || "尚未綁定任何地點";
                     document.getElementById('adminLocationSelect').value = dbUidMappings[adminScannedUid] || "";
                     document.getElementById('adminResult').style.display = 'block';
                     
-                    // 強烈視覺引導
                     showMsg('adminMsg', `✅ 晶片讀取成功！<br>👇 請在下方選擇地點，並點擊「儲存至雲端」完成綁定。`, 'info');
-                    const saveBtn = document.getElementById('adminSingleSaveBtn');
-                    if(saveBtn) {
-                        saveBtn.style.boxShadow = "0 0 15px rgba(40,167,69,0.9)";
-                        setTimeout(() => { saveBtn.style.boxShadow = "none"; }, 2000);
-                    }
-                    
-                    nfcReader.abort(); resetAdminBtn();
+                    resetAdminBtn();
                 };
                 nfcReader.onreadingerror = () => {
                     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
@@ -722,11 +732,11 @@
                     resetAdminBtn();
                 };
             } catch (error) { 
-                showMsg('adminMsg', "❌ 啟動失敗，請確認已開啟 NFC。", "error"); 
+                showMsg('adminMsg', "❌ 設備不支援 NFC，或權限未開啟。", "error"); 
                 resetAdminBtn(); 
             }
         };
-        
+
         window.adminUpdateMapping = async function() {
             const select = document.getElementById('adminLocationSelect');
             const loc = select.value;
@@ -752,7 +762,7 @@
 
         window.switchAdminBindingMode = function(mode) {
             hideMsg('adminMsg');
-            if (nfcReader) { try { nfcReader.abort(); } catch(e){} } // 切換模式時清理 NFC 佔用
+            stopNfcScan(); // 切換模式時清理 NFC 佔用
             
             if (mode === 'single') {
                 document.getElementById('btnModeSingle').className = "btn btn-primary";
@@ -769,7 +779,7 @@
 
         window.adminStartRouteBinding = function() {
             hideMsg('adminMsg');
-            if (nfcReader) { try { nfcReader.abort(); } catch(e){} }
+            stopNfcScan();
             const routeId = document.getElementById('adminRouteSelect').value;
             if (!routeId) { document.getElementById('adminRouteBindingUI').style.display = 'none'; return; }
             
@@ -820,7 +830,7 @@
 
         window.adminRouteNextPoint = function() {
             hideMsg('adminMsg');
-            if (nfcReader) { try { nfcReader.abort(); } catch(e){} }
+            stopNfcScan();
             adminRouteCurrentIdx++;
             window.adminRenderRoutePoint();
         };
@@ -829,13 +839,17 @@
             const btn = document.getElementById('adminRouteScanBtn');
             btn.innerText = "⏳ 啟動中...";
             try {
-                if (nfcReader) { try { nfcReader.abort(); } catch(e){} } // 踹醒卡死的感應器
-                nfcReader = new NDEFReader(); await nfcReader.scan();
+                stopNfcScan();
+                nfcAbortController = new AbortController();
+                nfcReader = new NDEFReader(); 
+                await nfcReader.scan({ signal: nfcAbortController.signal });
+
                 btn.innerText = "⏳ 靠近晶片感應中..."; btn.className = "btn btn-warning"; hideMsg('adminMsg');
                 
                 nfcReader.onreading = async event => {
-                    nfcReader.abort();
-                    if (navigator.vibrate) navigator.vibrate(200); // 震動回饋
+                    stopNfcScan(); // 防當機！立刻停止硬體感應
+                    if (navigator.vibrate) navigator.vibrate(200); 
+
                     tempScannedUidForRoute = event.serialNumber; 
                     
                     document.getElementById('adminRouteScannedUidText').innerText = `已感應到新晶片: ${tempScannedUidForRoute}`;
@@ -864,7 +878,7 @@
             try {
                 const confirmBtn = document.getElementById('adminRouteConfirmBtn');
                 confirmBtn.innerText = "⏳ 儲存中...";
-                confirmBtn.disabled = true; // 防止重複點擊
+                confirmBtn.disabled = true;
 
                 await setDoc(doc(db, "uidMappings", tempScannedUidForRoute), { locationName: currentPointName });
                 showMsg('adminMsg', `✅ 已成功將 UID 綁定至「${currentPointName}」`, 'success');
@@ -891,13 +905,18 @@
             const btn = document.getElementById('scanBtn');
             btn.innerText = "⏳ 啟動中...";
             try {
-                if (nfcReader) { try { nfcReader.abort(); } catch(e){} }
-                nfcReader = new NDEFReader(); await nfcReader.scan();
+                stopNfcScan();
+                nfcAbortController = new AbortController();
+                nfcReader = new NDEFReader(); 
+                await nfcReader.scan({ signal: nfcAbortController.signal });
+
                 btn.innerText = "⏳ 靠近晶片中..."; btn.className = "btn btn-warning"; hideMsg('patrolMsg');
+                
                 nfcReader.onreading = event => { 
+                    stopNfcScan();
                     if (navigator.vibrate) navigator.vibrate(200);
                     window.verifyPatrolPoint(event.serialNumber); 
-                    nfcReader.abort(); resetPatrolBtn(); 
+                    resetPatrolBtn(); 
                 };
                 nfcReader.onreadingerror = () => { 
                     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
