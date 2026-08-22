@@ -127,9 +127,17 @@
                         <p style="margin: 0 0 5px 0; font-size: 14px; color: #666;">目前目標：第 <strong id="adminRoutePointIndex">1</strong> / <span id="adminRoutePointTotal">10</span> 點</p>
                         <h3 id="adminRouteCurrentPointName" style="margin: 0; color: var(--primary); font-size: 24px;"></h3>
                         <p style="margin: 8px 0 0 0; font-size: 12px; color: #888;">當前綁定：<span id="adminRouteCurrentBound"></span></p>
+                        
+                        <!-- ➕ 新增：顯示感應到的晶片 UID -->
+                        <p id="adminRouteScannedUidText" style="display:none; margin: 10px 0 0 0; font-size: 15px; color: var(--danger); font-weight:bold;"></p>
                     </div>
                     
-                    <button class="btn btn-success" id="adminRouteScanBtn" onclick="window.adminRouteScanNfc()" style="padding: 15px; font-size: 18px;">📲 掃描並綁定此點</button>
+                    <!-- 掃描按鈕 -->
+                    <button class="btn btn-success" id="adminRouteScanBtn" onclick="window.adminRouteScanNfc()" style="padding: 15px; font-size: 18px;">📲 掃描此點的晶片</button>
+                    
+                    <!-- ➕ 新增：確認綁定按鈕 (預設隱藏) -->
+                    <button class="btn btn-primary" id="adminRouteConfirmBtn" onclick="window.adminRouteConfirmBinding()" style="display: none; padding: 15px; font-size: 18px; width: 100%; box-shadow: 0 4px 10px rgba(26,115,232,0.3);">✅ 確認綁定此晶片</button>
+
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
                         <button class="btn btn-warning" style="flex: 1; padding: 12px; font-size: 15px;" onclick="window.adminRouteNextPoint()">⏭️ 略過換下一點</button>
                     </div>
@@ -737,6 +745,7 @@
         // ==========================================
         let adminRoutePoints = [];
         let adminRouteCurrentIdx = 0;
+        let tempScannedUidForRoute = ""; // ➕ 暫存感應到的晶片 UID
 
         window.switchAdminBindingMode = function(mode) {
             hideMsg('adminMsg');
@@ -792,6 +801,15 @@
                 bindDisplay.innerText = '尚未綁定';
                 bindDisplay.style.color = 'var(--danger)';
             }
+
+            // ➕ 重置 UI 狀態，等待掃描
+            tempScannedUidForRoute = "";
+            document.getElementById('adminRouteScannedUidText').style.display = 'none';
+            const scanBtn = document.getElementById('adminRouteScanBtn');
+            scanBtn.style.display = 'block';
+            scanBtn.innerText = "📲 掃描此點的晶片";
+            scanBtn.className = "btn btn-success";
+            document.getElementById('adminRouteConfirmBtn').style.display = 'none';
         };
 
         window.adminRouteNextPoint = function() {
@@ -808,24 +826,49 @@
                 
                 nfcReader.onreading = async event => {
                     nfcReader.abort();
-                    const uid = event.serialNumber;
-                    const currentPointName = adminRoutePoints[adminRouteCurrentIdx];
+                    tempScannedUidForRoute = event.serialNumber; // 暫存 UID
                     
-                    try {
-                        // 儲存綁定資訊至雲端
-                        await setDoc(doc(db, "uidMappings", uid), { locationName: currentPointName });
-                        showMsg('adminMsg', `✅ 已成功將 UID ${uid} 綁定至「${currentPointName}」`, 'success');
-                        
-                        btn.innerText = "📲 掃描並綁定此點"; btn.className = "btn btn-success";
-                        
-                        // 成功後延遲 1 秒，自動前往下一個點
-                        setTimeout(() => { window.adminRouteNextPoint(); }, 1000);
-                        
-                    } catch(e) {
-                        showMsg('adminMsg', `❌ 綁定失敗，請確認網路連線。`, 'error');
-                        btn.innerText = "📲 掃描並綁定此點"; btn.className = "btn btn-success";
-                    }
+                    // ➕ 改變 UI：顯示感應到的 UID，隱藏掃描鍵，顯示確認鍵
+                    document.getElementById('adminRouteScannedUidText').innerText = `已感應到新晶片: ${tempScannedUidForRoute}`;
+                    document.getElementById('adminRouteScannedUidText').style.display = 'block';
+                    
+                    btn.style.display = 'none';
+                    document.getElementById('adminRouteConfirmBtn').style.display = 'block';
+                    
+                    showMsg('adminMsg', `📍 晶片讀取成功！請點擊上方「確認綁定」。`, 'info');
                 };
+                nfcReader.onreadingerror = () => {
+                    showMsg('adminMsg', "⚠️ 讀取失敗，請重新感應。", "error");
+                    btn.innerText = "📲 掃描此點的晶片"; btn.className = "btn btn-success";
+                };
+            } catch (error) {
+                showMsg('adminMsg', "❌ 手機不支援 NFC 感應。", "error");
+                btn.innerText = "📲 掃描此點的晶片"; btn.className = "btn btn-success";
+            }
+        };
+
+        // ➕ 新增確認綁定的邏輯函數
+        window.adminRouteConfirmBinding = async function() {
+            if (!tempScannedUidForRoute) return;
+            const currentPointName = adminRoutePoints[adminRouteCurrentIdx];
+            
+            try {
+                // 儲存綁定資訊至雲端
+                await setDoc(doc(db, "uidMappings", tempScannedUidForRoute), { locationName: currentPointName });
+                showMsg('adminMsg', `✅ 已成功將 UID 綁定至「${currentPointName}」`, 'success');
+                
+                document.getElementById('adminRouteConfirmBtn').innerText = "⏳ 儲存中...";
+                
+                // 成功後延遲 1 秒，自動前往下一個點
+                setTimeout(() => { 
+                    document.getElementById('adminRouteConfirmBtn').innerText = "✅ 確認綁定此晶片";
+                    window.adminRouteNextPoint(); 
+                }, 1000);
+                
+            } catch(e) {
+                showMsg('adminMsg', `❌ 綁定失敗，請確認網路連線。`, 'error');
+            }
+        };
                 nfcReader.onreadingerror = () => {
                     showMsg('adminMsg', "⚠️ 讀取失敗，請重新感應。", "error");
                     btn.innerText = "📲 掃描並綁定此點"; btn.className = "btn btn-success";
