@@ -184,13 +184,18 @@
         </div>
     </div>
 
+
     <!-- ============================================== -->
-    <!-- Firebase SDK 與雲端核心邏輯 (使用 Module) -->
+    <!-- Firebase SDK 與雲端核心邏輯 (Auth 企業級安全版) -->
     <!-- ============================================== -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, doc, updateDoc, onSnapshot, setDoc, query, orderBy, enableMultiTabIndexedDbPersistence } 
+        import { getFirestore, collection, addDoc, doc, updateDoc, onSnapshot, setDoc, query, orderBy, enableMultiTabIndexedDbPersistence, getDoc } 
         from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        
+        // 🚨 載入 Firebase Auth 引擎模組
+        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } 
+        from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBq4EKFQ3gjq1kpOWMH5MXosF7O9ENOrjw",
@@ -203,7 +208,10 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+        const auth = getAuth(app); // 啟動 Auth 引擎
+        const VIRTUAL_DOMAIN = "@patrol.com"; // 虛擬信箱網域
 
+        // 啟用離線模式
         enableMultiTabIndexedDbPersistence(db).catch((err) => { console.warn("離線模式啟用失敗：", err.code); });
 
         let dbUsers = {};
@@ -214,71 +222,113 @@
         let currentActiveTask = null;
         let nfcReader = null;
         let currentUser = null;
-        let adminScannedUid = ""; // 修正全域變數域
+        let adminScannedUid = ""; 
         let currentReportBase64 = "";
 
-        function initRealtimeListeners() {
-            onSnapshot(collection(db, "users"), (snapshot) => {
-                dbUsers = {}; snapshot.forEach(doc => { dbUsers[doc.id] = doc.data(); });
-                if (snapshot.empty) seedInitialData();
-            });
-
-            onSnapshot(collection(db, "routes"), (snapshot) => {
-                dbRoutes = []; snapshot.forEach(doc => { dbRoutes.push({ id: doc.id, ...doc.data() }); });
-                if (document.getElementById('view-route-add').classList.contains('active')) window.renderRoutes();
-            });
-
-            onSnapshot(collection(db, "uidMappings"), (snapshot) => {
-                dbUidMappings = {}; snapshot.forEach(doc => { dbUidMappings[doc.id] = doc.data().locationName; });
-            });
-
-            onSnapshot(query(collection(db, "tasks"), orderBy("startTimestamp", "desc")), (snapshot) => {
-                dbTasks = []; snapshot.forEach(doc => { dbTasks.push({ id: doc.id, ...doc.data() }); });
+        // ==========================================
+        // 🔐 登入驗證與監聽 (Auth 核心)
+        // ==========================================
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                document.getElementById('networkStatus').innerText = "⏳ 驗證成功，正在讀取權限...";
+                const username = user.email.replace(VIRTUAL_DOMAIN, '');
                 
-                if (currentActiveTask) {
-                    const updatedTask = dbTasks.find(t => t.id === currentActiveTask.id);
-                    if (updatedTask) currentActiveTask = updatedTask;
+                try {
+                    const userDoc = await getDoc(doc(db, "users", username));
+                    if (userDoc.exists()) {
+                        currentUser = { username: username, ...userDoc.data() };
+                        
+                        // 驗證成功，進入主畫面
+                        document.getElementById('displayUserName').innerText = currentUser.name;
+                        document.getElementById('displayUserRole').innerText = (currentUser.role === 'admin') ? '管理員' : '巡邏員';
+                        
+                        const adminBtn = document.getElementById('btnAdminMode');
+                        if (currentUser.role === 'admin') { 
+                            adminBtn.className = "btn btn-secondary role-btn"; 
+                            document.getElementById('adminBtnText').innerText = "綁定晶片 (管理員)"; 
+                        } else { 
+                            adminBtn.className = "btn btn-secondary role-btn locked-btn"; 
+                            document.getElementById('adminBtnText').innerText = "權限鎖定 🔒"; 
+                        }
+                        
+                        window.switchView('view-role', '主選單');
+                        initRealtimeListeners();
+                        window.checkNetworkStatus(); // 恢復正常的網路狀態顯示
+                    } else {
+                        // 帳號被總幹事在後台刪除了，強制登出
+                        auth.signOut();
+                        alert("⚠️ 您的帳號權限已被移除，請聯絡管理員。");
+                        window.switchView('view-login', '系統登入');
+                    }
+                } catch (error) {
+                    console.error("讀取權限失敗", error);
+                    document.getElementById('networkStatus').innerText = "🔴 離線登入模式 (使用快取)";
+                    // 在完全斷網的極端情況下，如果 IndexedDB 有快取，讓他進去
+                    if (currentUser) window.switchView('view-role', '主選單');
                 }
-                if (document.getElementById('view-patrol-home').classList.contains('active')) window.loadPatrolTasks();
-            });
-        }
+            } else {
+                // 沒有登入紀錄，顯示登入畫面
+                window.switchView('view-login', '系統登入');
+                window.checkNetworkStatus();
+            }
+        });
 
-        async function seedInitialData() {
-            await setDoc(doc(db, "users", "admin"), { password: "1234", role: "admin", name: "總幹事" });
-            await setDoc(doc(db, "users", "guard"), { password: "1234", role: "user", name: "早班-陳員" });
-        }
+        // 監控網路狀態
+        window.checkNetworkStatus = function() {
+            const updateStatus = () => {
+                const el = document.getElementById('networkStatus');
+                // 如果是在登入中，不要蓋掉登入訊息
+                if (el.innerText.includes("驗證成功") || el.innerText.includes("初始化")) return;
+                
+                if (navigator.onLine) { el.className = "online"; el.innerText = "🟢 網路連線正常 (資料自動同步)"; } 
+                else { el.className = "offline"; el.innerText = "🔴 離線模式 (打卡紀錄將暫存在手機)"; }
+            };
+            window.addEventListener('online', updateStatus); 
+            window.addEventListener('offline', updateStatus); 
+            updateStatus();
+        };
 
-        window.onload = () => { initRealtimeListeners(); window.checkNetworkStatus(); window.checkLoginState(); };
+        window.onload = () => { 
+            // 頁面載入時，onAuthStateChanged 會自動處理登入狀態，所以這裡不需做事
+        };
 
         function showMsg(id, text, type) { const b = document.getElementById(id); b.style.display = 'block'; b.className = `msg-box msg-${type}`; b.innerHTML = text; }
         function hideMsg(id) { document.getElementById(id).style.display = 'none'; }
 
         // --- 登入控制 ---
-        window.processLogin = function() {
-            const un = document.getElementById('inputUsername').value.trim(), pw = document.getElementById('inputPassword').value.trim();
-            if (dbUsers[un] && dbUsers[un].password === pw) {
-                currentUser = { username: un, role: dbUsers[un].role, name: dbUsers[un].name };
-                localStorage.setItem('cloudCurrentUser', JSON.stringify(currentUser));
-                document.getElementById('inputUsername').value = ''; document.getElementById('inputPassword').value = '';
-                window.checkLoginState();
-            } else { alert("❌ 帳號或密碼錯誤！請重新輸入。"); }
+        window.processLogin = async function() {
+            const un = document.getElementById('inputUsername').value.trim().toLowerCase();
+            const pw = document.getElementById('inputPassword').value.trim();
+            
+            if (!un || !pw) { alert("請輸入帳號與密碼！"); return; }
+            
+            document.getElementById('networkStatus').className = "online";
+            document.getElementById('networkStatus').innerText = "🔐 正在與安全伺服器連線...";
+            
+            const virtualEmail = `${un}${VIRTUAL_DOMAIN}`;
+            
+            try {
+                // 呼叫 Firebase 伺服器進行加密驗證
+                await signInWithEmailAndPassword(auth, virtualEmail, pw);
+                // 成功後 onAuthStateChanged 會自動接手跳轉畫面
+            } catch (error) {
+                console.error("登入失敗", error);
+                document.getElementById('networkStatus').className = "offline";
+                document.getElementById('networkStatus').innerText = "🔴 請重新登入";
+                if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+                    alert("❌ 帳號或密碼錯誤！\n(請確認該帳號已在管理後台建立)");
+                } else {
+                    alert(`❌ 登入失敗：檢查網路連線或稍後再試。`);
+                }
+            }
         };
 
-        window.processLogout = function() {
-            if(confirm("確定要登出系統嗎？")) { localStorage.removeItem('cloudCurrentUser'); currentUser = null; window.checkLoginState(); }
-        };
-
-        window.checkLoginState = function() {
-            const userJson = localStorage.getItem('cloudCurrentUser');
-            if (userJson) {
-                currentUser = JSON.parse(userJson);
-                document.getElementById('displayUserName').innerText = currentUser.name;
-                document.getElementById('displayUserRole').innerText = (currentUser.role === 'admin') ? '管理員' : '巡邏員';
-                const adminBtn = document.getElementById('btnAdminMode');
-                if (currentUser.role === 'admin') { adminBtn.className = "btn btn-secondary role-btn"; document.getElementById('adminBtnText').innerText = "綁定晶片 (管理員)"; } 
-                else { adminBtn.className = "btn btn-secondary role-btn locked-btn"; document.getElementById('adminBtnText').innerText = "權限鎖定 🔒"; }
-                window.switchView('view-role', '主選單');
-            } else { window.switchView('view-login', '系統登入'); }
+        window.processLogout = async function() {
+            if(confirm("確定要登出系統嗎？")) { 
+                await auth.signOut(); 
+                localStorage.removeItem('cloudCurrentUser'); // 清除舊版殘留
+                currentUser = null; 
+            }
         };
 
         window.goBackAction = function() {
@@ -303,6 +353,32 @@
                 if(viewId === 'view-admin') hideMsg('adminMsg');
             }
         };
+
+        // --- Firebase 即時監聽與核心邏輯 ---
+        function initRealtimeListeners() {
+            onSnapshot(collection(db, "users"), (snapshot) => {
+                dbUsers = {}; snapshot.forEach(doc => { dbUsers[doc.id] = doc.data(); });
+            });
+
+            onSnapshot(collection(db, "routes"), (snapshot) => {
+                dbRoutes = []; snapshot.forEach(doc => { dbRoutes.push({ id: doc.id, ...doc.data() }); });
+                if (document.getElementById('view-route-add').classList.contains('active')) window.renderRoutes();
+            });
+
+            onSnapshot(collection(db, "uidMappings"), (snapshot) => {
+                dbUidMappings = {}; snapshot.forEach(doc => { dbUidMappings[doc.id] = doc.data().locationName; });
+            });
+
+            onSnapshot(query(collection(db, "tasks"), orderBy("startTimestamp", "desc")), (snapshot) => {
+                dbTasks = []; snapshot.forEach(doc => { dbTasks.push({ id: doc.id, ...doc.data() }); });
+                
+                if (currentActiveTask) {
+                    const updatedTask = dbTasks.find(t => t.id === currentActiveTask.id);
+                    if (updatedTask) currentActiveTask = updatedTask;
+                }
+                if (document.getElementById('view-patrol-home').classList.contains('active')) window.loadPatrolTasks();
+            });
+        }
 
         window.renderRoutes = function(keyword = '') {
             const list = document.getElementById('routeList'); list.innerHTML = '';
@@ -497,7 +573,7 @@
             }
         };
 
-        // --- 任務明細與邏輯修復 ---
+        // --- 任務明細 ---
         window.viewTaskDetail = function(taskId) {
             const task = dbTasks.find(t => t.id === taskId);
             if (!task) return;
@@ -525,12 +601,11 @@
                         </thead><tbody>
             `;
 
-            // 修正點：從任務開始時間計算第一點的耗時，而非 null
             let previousTimestamp = task.startTimestamp;
 
             task.points.forEach((pt, idx) => {
                 const log = logs.find(l => l.pointName === pt);
-                const incident = (task.incidents || []).find(i => i.pointName === pt); // 捕捉異常報事紀錄
+                const incident = (task.incidents || []).find(i => i.pointName === pt); 
                 let statusIcon = '⏳', timeStr = '-', gapStr = '-';
                 
                 if (log) {
@@ -548,7 +623,6 @@
                     statusIcon = `🟢`;
                 }
 
-                // UI 優化：呈現巡邏員當下上傳的文字報事摘要
                 let incidentHtml = '';
                 if (incident) {
                     incidentHtml = `<div style="margin-top: 5px; padding: 5px; background: #e0f7fa; border-radius: 4px; font-size: 11px; color: #006064;">
@@ -567,7 +641,7 @@
             document.getElementById('taskDetailModal').classList.add('active');
         };
 
-        // --- NFC 錯誤處理修復 (抽離按鈕重置狀態) ---
+        // --- NFC 功能 ---
         function resetAdminBtn() {
             const btn = document.getElementById('adminScanBtn');
             btn.innerText = "📲 重新掃描晶片"; btn.className = "btn btn-primary";
@@ -589,7 +663,7 @@
                 nfcReader = new NDEFReader(); await nfcReader.scan();
                 btn.innerText = "⏳ 正在感應..."; btn.className = "btn btn-warning"; hideMsg('adminMsg');
                 nfcReader.onreading = event => {
-                    adminScannedUid = event.serialNumber; // 統一使用外層變數
+                    adminScannedUid = event.serialNumber; 
                     document.getElementById('adminUidDisplay').innerText = adminScannedUid;
                     document.getElementById('adminCurrentLoc').innerText = dbUidMappings[adminScannedUid] || "尚未綁定任何地點";
                     document.getElementById('adminLocationSelect').value = dbUidMappings[adminScannedUid] || "";
@@ -597,7 +671,6 @@
                     showMsg('adminMsg', `✅ 讀取成功！請確認或更新綁定。`, 'success');
                     nfcReader.abort(); resetAdminBtn();
                 };
-                // 恢復舊版被遺漏的 NFC 錯誤監聽
                 nfcReader.onreadingerror = () => {
                     showMsg('adminMsg', "⚠️ 讀取失敗，請重新感應。", "error");
                     resetAdminBtn();
@@ -632,7 +705,6 @@
                     window.verifyPatrolPoint(event.serialNumber); 
                     nfcReader.abort(); resetPatrolBtn(); 
                 };
-                // 恢復舊版被遺漏的 NFC 錯誤監聽
                 nfcReader.onreadingerror = () => { 
                     showMsg('patrolMsg', "⚠️ 讀取失敗，請重試。", "error"); 
                     resetPatrolBtn(); 
@@ -643,14 +715,6 @@
             }
         };
 
-        window.checkNetworkStatus = function() {
-            const updateStatus = () => {
-                const el = document.getElementById('networkStatus');
-                if (navigator.onLine) { el.className = "online"; el.innerText = "🟢 網路連線正常 (資料將自動同步雲端)"; } 
-                else { el.className = "offline"; el.innerText = "🔴 離線模式 (打卡紀錄已暫存，連網即同步)"; }
-            };
-            window.addEventListener('online', updateStatus); window.addEventListener('offline', updateStatus); updateStatus();
-        };
     </script>
 </body>
 </html>
