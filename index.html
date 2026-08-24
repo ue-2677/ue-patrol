@@ -540,42 +540,50 @@
             const scannedLoc = dbUidMappings[scannedUid];
             const targetLoc = currentActiveTask.points[currentActiveTask.currentPointIndex];
             
+            // 情況 1：這張晶片根本還沒綁定
             if (!scannedLoc) { 
-                showMsg('patrolMsg', `❌ 未知晶片！<br><small>UID: ${scannedUid}</small>`, "error"); 
+                showMsg('patrolMsg', `❌ 未知晶片！<br>此晶片尚未在雲端綁定地點。<br><small>UID: ${scannedUid}</small>`, "error"); 
                 setTimeout(() => { if (isContinuousPatrol) isNfcActive = true; }, 2000); // 錯誤2秒後解鎖重試
                 return; 
             }
             
             const donePoints = (currentActiveTask.pointLogs || []).map(l => l.pointName).concat(currentActiveTask.skippedPoints || []);
             
+            // 🌟 無序模式的判斷邏輯
             if (currentActiveTask.isUnordered) {
                 if (currentActiveTask.points.includes(scannedLoc)) {
                     if (donePoints.includes(scannedLoc)) {
-                        showMsg('patrolMsg', `❌ 重複掃描！「${scannedLoc}」已打卡。`, "error");
+                        showMsg('patrolMsg', `❌ 重複掃描！「${scannedLoc}」已打卡過。`, "error");
                         setTimeout(() => { if (isContinuousPatrol) isNfcActive = true; }, 2000);
                     } else {
                         showMsg('patrolMsg', `✅ 成功打卡：${scannedLoc}`, "success");
                         window.saveTaskProgress(false, scannedLoc); 
                     }
                 } else {
-                    showMsg('patrolMsg', `❌ 「${scannedLoc}」不在這條路線中。`, "error");
+                    showMsg('patrolMsg', `❌ 路線錯誤！「${scannedLoc}」不在這條路線中。`, "error");
                     setTimeout(() => { if (isContinuousPatrol) isNfcActive = true; }, 2000);
                 }
-            } else {
+            } 
+            // 🌟 原本有序模式的判斷邏輯
+            else {
                 if (scannedLoc === targetLoc) { 
                     showMsg('patrolMsg', `✅ 成功打卡：${targetLoc}`, "success"); 
                     window.saveTaskProgress(false, targetLoc); 
                     return; 
                 }
                 const pIdx = currentActiveTask.points.indexOf(scannedLoc);
-                if (pIdx === -1) showMsg('patrolMsg', `❌ 不在路線中。`, "error");
-                else if (pIdx > currentActiveTask.currentPointIndex) showMsg('patrolMsg', `❌ 順序錯誤！這是之後的點「${scannedLoc}」。`, "error");
-                else showMsg('patrolMsg', `❌ 重複掃描！已打卡。`, "error");
+                if (pIdx === -1) {
+                    showMsg('patrolMsg', `❌ 路線錯誤！「${scannedLoc}」不在這條路線中。`, "error");
+                } else if (pIdx > currentActiveTask.currentPointIndex) {
+                    showMsg('patrolMsg', `❌ 順序錯誤！這是之後的點「${scannedLoc}」。`, "error");
+                } else {
+                    showMsg('patrolMsg', `❌ 重複掃描！「${scannedLoc}」已打卡過。`, "error");
+                }
                 
+                // 錯誤提示顯示後，等待2秒再解鎖感應器讓保全重試
                 setTimeout(() => { if (isContinuousPatrol) isNfcActive = true; }, 2000);
             }
         };
-
         window.saveTaskProgress = async function(isSkipped, pointNameOverride = null) {
             const currentPtName = pointNameOverride || currentActiveTask.points[currentActiveTask.currentPointIndex];
             const now = Date.now();
