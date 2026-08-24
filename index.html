@@ -92,7 +92,7 @@
             </div>
             <button class="btn btn-primary role-btn" onclick="window.switchView('view-patrol-home', '巡邏任務管理')">
                 <span class="role-icon">👮</span> 開始巡邏
-            </button>
+            </button>Z
             <button class="btn btn-secondary role-btn" id="btnAdminMode" onclick="window.enterAdminMode()">
                 <span class="role-icon">⚙️</span> <span id="adminBtnText">管理員模式</span>
             </button>
@@ -724,9 +724,20 @@
         };
         
         window.confirmSkip = function() {
+            // 1. 抓取按鈕並鎖定，防止連點
+            const btn = document.querySelector('#skipModal .btn-danger');
+            btn.disabled = true;
+            btn.innerText = "處理中...";
+
             const pt = document.getElementById('skipPointSelect').value;
             if (pt) { showMsg('patrolMsg', `⚠️ 已記錄跳過：${pt}`, "warning"); window.saveTaskProgress(true, pt); }
-            document.getElementById('skipModal').classList.remove('active');
+            
+            // 2. 延遲關閉視窗並恢復按鈕狀態
+            setTimeout(() => {
+                document.getElementById('skipModal').classList.remove('active');
+                btn.disabled = false;
+                btn.innerText = "確認跳過";
+            }, 1000);
         };
 
         window.prepareReport = function() {
