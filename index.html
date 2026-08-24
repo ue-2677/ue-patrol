@@ -92,7 +92,7 @@
             </div>
             <button class="btn btn-primary role-btn" onclick="window.switchView('view-patrol-home', '巡邏任務管理')">
                 <span class="role-icon">👮</span> 開始巡邏
-            </button>Z
+            </button>
             <button class="btn btn-secondary role-btn" id="btnAdminMode" onclick="window.enterAdminMode()">
                 <span class="role-icon">⚙️</span> <span id="adminBtnText">管理員模式</span>
             </button>
@@ -353,11 +353,15 @@
                         
                         if (!window.isSystemInitialized) {
                             window.isSystemInitialized = true;
+                            
+                            // 🌟 改良：使用陣列判斷，只要身分符合其中之一就視為管理員
+                            const isAdmin = ['admin', 'sub_admin'].includes(currentUser.role);
+                            
                             document.getElementById('displayUserName').innerText = currentUser.name;
-                            document.getElementById('displayUserRole').innerText = (currentUser.role === 'admin') ? '管理員' : '巡邏員';
+                            document.getElementById('displayUserRole').innerText = isAdmin ? '管理員' : '巡邏員';
                             
                             const adminBtn = document.getElementById('btnAdminMode');
-                            if (currentUser.role === 'admin') { 
+                            if (isAdmin) { 
                                 adminBtn.className = "btn btn-secondary role-btn"; 
                                 document.getElementById('adminBtnText').innerText = "綁定晶片 (管理員)"; 
                             } else { 
@@ -864,7 +868,8 @@
         }
 
         window.enterAdminMode = function() {
-            if (currentUser && currentUser.role === 'admin') {
+            // 🌟 改良：同樣使用陣列檢查，確保二級管理員也能順利進入綁定介面
+            if (currentUser && ['admin', 'sub_admin'].includes(currentUser.role)) {
                 const select = document.getElementById('adminLocationSelect');
                 select.innerHTML = '<option value="">-- 請選擇地點 --</option>';
                 let allPoints = dbPoints.map(pt => `${pt.floor || ''} ${pt.name || ''}`.trim());
