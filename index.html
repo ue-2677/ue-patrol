@@ -26,6 +26,11 @@
         .btn-info { background-color: var(--info); color: white; }
         .btn-secondary { background-color: #6c757d; color: white; }
         .btn-danger { background-color: var(--danger); color: white; margin-top: 15px; }
+        
+        /* 🌟 補足遺漏的 Badge UI 樣式 */
+        .badge { display: inline-block; padding: 3px 6px; border-radius: 4px; font-weight: bold; line-height: 1; }
+        .badge-info { background-color: var(--info); color: white; }
+
         .search-box, .form-control { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 15px; box-sizing: border-box; }
         .form-control textarea { resize: vertical; }
         .role-icon { font-size: 50px; margin-bottom: 10px; display: block; }
@@ -43,6 +48,7 @@
         .msg-box { margin-top: 15px; padding: 15px; border-radius: 8px; font-weight: bold; display: none; line-height: 1.5; font-size: 14px; }
         .msg-error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         .msg-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .msg-warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; }
         .modal.active { display: flex; }
         .modal-content { background: white; padding: 20px; border-radius: 10px; width: 90%; max-height: 85vh; overflow-y: auto; }
@@ -159,7 +165,6 @@
         </div>
 
         <!-- 視圖 5：巡邏打卡 -->
-<!-- 視圖 5：巡邏打卡 -->
         <div id="view-patrol-exec" class="view-section">
             <div id="patrolActiveUI">
                 
@@ -179,7 +184,7 @@
                     </div>
                 </div>
 
-                <!-- 🌟 改為連續掃描開關按鈕 -->
+                <!-- 連續掃描開關按鈕 -->
                 <button class="btn btn-success" id="scanBtn" onclick="window.patrolScanNfc()" style="padding: 20px; font-size: 20px; margin-bottom:10px; box-shadow: 0 4px 6px rgba(40,167,69,0.3);">📲 開始連續巡邏掃描</button>
                 
                 <div style="display: flex; gap: 10px; margin-top: 10px;">
@@ -284,11 +289,26 @@
         let currentReportBase64 = "";
 
         // ==========================================
+        // 🛠️ 系統工具函數
+        // ==========================================
+        window.escapeHTML = function(str) {
+            return str.replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag] || tag)
+            );
+        };
+
+        // ==========================================
         // 📲 終極防卡死與連續感應控制核心
         // ==========================================
         let nfcAbortController = null;
-        let isNfcActive = false; // 防連刷軟性鎖
-        let isContinuousPatrol = false; // 是否在連續巡邏模式中
+        let isNfcActive = false;
+        let isContinuousPatrol = false; 
 
         function stopNfcScan() {
             isNfcActive = false;
@@ -300,29 +320,28 @@
         }
 
         // ==========================================
-// ==========================================
         // 🔐 登入驗證與監聽 (單一設備登入防護版)
         // ==========================================
         window.isSystemInitialized = false; 
-        let userDocListener = null; // 🌟 儲存監聽器，避免重複綁定
+        let userDocListener = null; 
+        window.isLoggingIn = false; // 🌟 宣告登入鎖定全域變數
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 document.getElementById('networkStatus').innerText = "⏳ 驗證成功，正在讀取權限...";
                 const username = user.email.replace(VIRTUAL_DOMAIN, '');
                 
-                if (userDocListener) userDocListener(); // 確保不會重複監聽
+                if (userDocListener) userDocListener(); 
                 
-                // 🌟 即時監聽自己的帳號，達成「被其他設備登入就踢下線」
                 userDocListener = onSnapshot(doc(db, "users", username), (docSnap) => {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         const dbSessionId = data.currentSessionId;
                         const myLocalSessionId = localStorage.getItem('patrolSessionId');
 
-                        // 🔍 核心防護：雲端 Session 存在，且與本機不符，代表有新設備登入
-                        if (dbSessionId && myLocalSessionId && dbSessionId !== myLocalSessionId) {
-                            if (userDocListener) userDocListener(); // 停止監聽
+                        // 🔍 防護：若不是正在手動登入且 SessionID 不符，則剔除
+                        if (!window.isLoggingIn && dbSessionId && myLocalSessionId && dbSessionId !== myLocalSessionId) {
+                            if (userDocListener) userDocListener(); 
                             auth.signOut();
                             localStorage.removeItem('patrolSessionId');
                             alert("⚠️ 您的帳號已在其他設備或瀏覽器登入，本機已被強制登出！");
@@ -332,7 +351,6 @@
 
                         currentUser = { username: username, ...data };
                         
-                        // 只有第一次載入時才切換畫面 (避免 onSnapshot 一直重刷 UI)
                         if (!window.isSystemInitialized) {
                             window.isSystemInitialized = true;
                             document.getElementById('displayUserName').innerText = currentUser.name;
@@ -358,7 +376,6 @@
                         window.switchView('view-login', '系統登入');
                     }
                 }, (error) => {
-                    // 斷網時仍允許維持畫面
                     document.getElementById('networkStatus').innerText = "🔴 離線登入模式 (使用快取)";
                     if (currentUser && !window.isSystemInitialized) {
                         window.isSystemInitialized = true;
@@ -402,19 +419,17 @@
             document.getElementById('networkStatus').innerText = "🔐 正在與安全伺服器連線...";
             
             const virtualEmail = `${un}${VIRTUAL_DOMAIN}`;
-            
-            // 🌟 1. 產生新的 Session ID 鑰匙並存入手機
+            window.isLoggingIn = true; 
             const newSessionId = Date.now().toString(36) + Math.random().toString(36).substr(2);
-            localStorage.setItem('patrolSessionId', newSessionId);
 
             try {
-                // 🌟 2. 登入 Firebase
                 await signInWithEmailAndPassword(auth, virtualEmail, pw);
-                
-                // 🌟 3. 登入成功後，將新鑰匙寫入雲端 (這會瞬間觸發其他設備的 onSnapshot 把他們踢下線)
                 await updateDoc(doc(db, "users", un), { currentSessionId: newSessionId });
+                localStorage.setItem('patrolSessionId', newSessionId);
+                window.isLoggingIn = false;
                 
             } catch (error) {
+                window.isLoggingIn = false; 
                 console.error("登入失敗", error);
                 document.getElementById('networkStatus').className = "offline";
                 document.getElementById('networkStatus').innerText = "🔴 請重新登入";
@@ -430,7 +445,7 @@
             if(confirm("確定要登出系統嗎？")) { 
                 await auth.signOut(); 
                 localStorage.removeItem('cloudCurrentUser'); 
-                localStorage.removeItem('patrolSessionId'); // 🌟 登出時順便銷毀鑰匙
+                localStorage.removeItem('patrolSessionId'); 
                 currentUser = null; 
             }
         };
@@ -443,7 +458,6 @@
         };
 
         window.switchView = function(viewId, title) {
-            // 離開巡邏或管理介面時，安全關閉 NFC
             if (viewId !== 'view-patrol-exec' && viewId !== 'view-admin') stopNfcScan();
 
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
@@ -502,11 +516,12 @@
         };
         window.filterRoutes = function() { window.renderRoutes(document.getElementById('searchInput').value); };
 
-        window.createNewTask = async function(routeTemplate) {
+        // 🌟 改良點：徹底解除阻塞，支援在無網路（例如地下室）直接預建任務 ID 並秒開介面
+        window.createNewTask = function(routeTemplate) {
             const newTask = {
                 routeName: routeTemplate.name, 
                 points: routeTemplate.points, 
-                isUnordered: routeTemplate.isUnordered || false, // 🌟 繼承無序狀態
+                isUnordered: routeTemplate.isUnordered || false, 
                 currentPointIndex: 0,
                 skippedPoints: [], pointLogs: [], incidents: [],
                 status: 'incomplete', 
@@ -514,11 +529,20 @@
                 startTime: new Date().toLocaleString(),
                 startTimestamp: Date.now() 
             };
+            
             try {
-                const docRef = await addDoc(collection(db, "tasks"), newTask);
-                currentActiveTask = { id: docRef.id, ...newTask };
+                // 利用 doc() 在本地端直接生成唯一 ID，再透過 setDoc 送交背景非同步上傳
+                const newDocRef = doc(collection(db, "tasks"));
+                setDoc(newDocRef, newTask).catch(e => {
+                    console.warn("目前離線中，新任務已暫存，待網路恢復將自動上傳", e);
+                });
+
+                currentActiveTask = { id: newDocRef.id, ...newTask };
                 window.switchView('view-patrol-exec', currentActiveTask.routeName);
-            } catch(e) { console.error("建立任務失敗", e); alert("建立失敗，請檢查網路狀態。"); }
+            } catch(e) { 
+                console.error("建立任務發生異常", e); 
+                alert("建立任務發生異常，請重試。"); 
+            }
         };
 
         window.loadPatrolTasks = function() {
@@ -554,7 +578,7 @@
             const remainingPoints = currentActiveTask.points.filter(p => !donePoints.includes(p));
 
             if (currentActiveTask.status === 'completed' || remainingPoints.length === 0) {
-                stopNfcScan(); // 巡邏完成自動關閉 NFC
+                stopNfcScan(); 
                 window.completeCurrentTask(); 
                 return;
             }
@@ -563,7 +587,6 @@
             document.getElementById('patrolCompleteUI').style.display = 'none'; 
             hideMsg('patrolMsg');
 
-            // 🌟 判斷並顯示無序/有序介面
             if (currentActiveTask.isUnordered) {
                 document.getElementById('orderedModeUI').style.display = 'none';
                 document.getElementById('unorderedModeUI').style.display = 'block';
@@ -579,7 +602,6 @@
                 document.getElementById('currentTargetName').innerText = currentActiveTask.points[currentActiveTask.currentPointIndex];
             }
 
-            // 🌟 連續掃描機制處理：如果畫面更新後還在連續掃描模式，就解鎖接受下一個晶片
             const btn = document.getElementById('scanBtn');
             if (isContinuousPatrol) {
                 isNfcActive = true; 
@@ -593,16 +615,14 @@
             const scannedLoc = dbUidMappings[scannedUid];
             const targetLoc = currentActiveTask.points[currentActiveTask.currentPointIndex];
             
-            // 情況 1：這張晶片根本還沒綁定
             if (!scannedLoc) { 
                 showMsg('patrolMsg', `❌ 未知晶片！<br>此晶片尚未在雲端綁定地點。<br><small>UID: ${scannedUid}</small>`, "error"); 
-                setTimeout(() => { if (isContinuousPatrol) isNfcActive = true; }, 2000); // 錯誤2秒後解鎖重試
+                setTimeout(() => { if (isContinuousPatrol) isNfcActive = true; }, 2000); 
                 return; 
             }
             
             const donePoints = (currentActiveTask.pointLogs || []).map(l => l.pointName).concat(currentActiveTask.skippedPoints || []);
             
-            // 🌟 無序模式的判斷邏輯
             if (currentActiveTask.isUnordered) {
                 if (currentActiveTask.points.includes(scannedLoc)) {
                     if (donePoints.includes(scannedLoc)) {
@@ -617,7 +637,6 @@
                     setTimeout(() => { if (isContinuousPatrol) isNfcActive = true; }, 2000);
                 }
             } 
-            // 🌟 原本有序模式的判斷邏輯
             else {
                 if (scannedLoc === targetLoc) { 
                     showMsg('patrolMsg', `✅ 成功打卡：${targetLoc}`, "success"); 
@@ -633,10 +652,10 @@
                     showMsg('patrolMsg', `❌ 重複掃描！「${scannedLoc}」已打卡過。`, "error");
                 }
                 
-                // 錯誤提示顯示後，等待2秒再解鎖感應器讓保全重試
                 setTimeout(() => { if (isContinuousPatrol) isNfcActive = true; }, 2000);
             }
         };
+
         window.saveTaskProgress = async function(isSkipped, pointNameOverride = null) {
             const currentPtName = pointNameOverride || currentActiveTask.points[currentActiveTask.currentPointIndex];
             const now = Date.now();
@@ -655,33 +674,30 @@
             let newIndex = currentActiveTask.currentPointIndex;
             if (!currentActiveTask.isUnordered) newIndex += 1;
             
-            try {
-                await updateDoc(doc(db, "tasks", currentActiveTask.id), {
-                    currentPointIndex: newIndex,
-                    skippedPoints: newSkipped,
-                    pointLogs: newLogs
-                });
+            // 優先更新本地變數以維持 UI 流暢切換
             currentActiveTask.currentPointIndex = newIndex;
             currentActiveTask.skippedPoints = newSkipped;
             currentActiveTask.pointLogs = newLogs;
             
-            setTimeout(window.updatePatrolUI, 1200); // UI 更新後自動解鎖感應器，保全可繼續走
+            setTimeout(window.updatePatrolUI, 1200); 
 
-            // 🌟 拔除 await，將資料丟給 Firebase 背景處理 (Firebase 會自動接管離線暫存與連線上傳)
+            // 背景排程寫入資料庫，支援 Firebase 自動接管離線暫存
             updateDoc(doc(db, "tasks", currentActiveTask.id), {
                 currentPointIndex: newIndex,
                 skippedPoints: newSkipped,
                 pointLogs: newLogs
             }).catch(e => { 
-                console.warn("目前離線中，資料已暫存於手機，連線後將自動同步", e); 
+                console.warn("目前離線中，打卡進度已暫存於手機，連線後將自動同步", e); 
+                if (isContinuousPatrol) isNfcActive = true;
             });
+        };
 
         window.completeCurrentTask = async function() {
-            // 🌟 改良：直接切換到「巡邏完成」的祝賀畫面
+            // 直接切換 UI
             document.getElementById('patrolActiveUI').style.display = 'none'; 
             document.getElementById('patrolCompleteUI').style.display = 'block';
             
-            // 🌟 拔除 await，讓結案動作在背景排隊上傳
+            // 背景排程寫入結案狀態
             updateDoc(doc(db, "tasks", currentActiveTask.id), {
                 status: 'completed',
                 endTime: new Date().toLocaleString()
@@ -689,7 +705,7 @@
                 console.warn("離線結案，資料已暫存於手機", e); 
             });
         };
-        // --- 準備選單內容 (故障/報事共用) ---
+
         function populatePointSelect(selectId) {
             const select = document.getElementById(selectId); select.innerHTML = '';
             if (currentActiveTask.isUnordered) {
@@ -706,6 +722,7 @@
             populatePointSelect('skipPointSelect');
             document.getElementById('skipModal').classList.add('active');
         };
+        
         window.confirmSkip = function() {
             const pt = document.getElementById('skipPointSelect').value;
             if (pt) { showMsg('patrolMsg', `⚠️ 已記錄跳過：${pt}`, "warning"); window.saveTaskProgress(true, pt); }
@@ -741,22 +758,28 @@
             reader.readAsDataURL(file);
         };
 
-        window.submitReport = async function() {
+        // 🌟 改良點：徹底解除 await 阻塞，使保全在地下室斷網時也能流暢完成報事並關閉視窗
+        window.submitReport = function() {
             const text = document.getElementById('reportTextInput').value.trim();
             if (!text && !currentReportBase64) { alert("請填寫說明文字或拍攝現場照片！"); return; }
             const targetLoc = document.getElementById('reportPointSelect').value;
             const newIncident = { pointName: targetLoc, text: text, photo: currentReportBase64, timeStr: new Date().toLocaleTimeString('zh-TW', { hour12: false }), timestamp: Date.now() };
 
-            let newIncidents = [...(currentActiveTask.incidents || [])]; newIncidents.push(newIncident);
-            try {
-                await updateDoc(doc(db, "tasks", currentActiveTask.id), { incidents: newIncidents });
-                currentActiveTask.incidents = newIncidents;
-                document.getElementById('reportModal').classList.remove('active');
-                showMsg('patrolMsg', `✅ 報事已成功回傳總機！`, "success");
-            } catch (error) { alert("報事上傳失敗，請檢查網路狀態。"); }
+            let newIncidents = [...(currentActiveTask.incidents || [])]; 
+            newIncidents.push(newIncident);
+
+            // 1. 優先更新本地變數與介面，不被網路狀態卡死
+            currentActiveTask.incidents = newIncidents;
+            document.getElementById('reportModal').classList.remove('active');
+            showMsg('patrolMsg', `✅ 報事已記錄！(若處於離線狀態將於背景自動同步)`, "success");
+
+            // 2. 利用 Firebase 自動離線緩存特性，將寫入動作丟至背景排隊
+            updateDoc(doc(db, "tasks", currentActiveTask.id), { incidents: newIncidents })
+                .catch(error => { 
+                    console.warn("報事資料已暫存於手機，等待網路恢復...", error); 
+                });
         };
 
-        // --- 任務明細 ---
         window.viewTaskDetail = function(taskId) {
             const task = dbTasks.find(t => t.id === taskId);
             if (!task) return;
@@ -824,9 +847,6 @@
             document.getElementById('taskDetailModal').classList.add('active');
         };
 
-        // ==========================================
-        // 🛠️ 管理員模式：NFC 功能與點/線綁定
-        // ==========================================
         function resetAdminBtn() {
             const btn = document.getElementById('adminScanBtn');
             if (btn) { btn.innerText = "📲 重新掃描晶片"; btn.className = "btn btn-primary"; }
@@ -906,7 +926,6 @@
             } catch(e) { showMsg('adminMsg', '❌ 儲存至雲端失敗，請檢查網路。', 'error'); }
         };
 
-        // --- 管理員連續綁定模式 ---
         let adminRoutePoints = [];
         let adminRouteCurrentIdx = 0;
         let tempScannedUidForRoute = ""; 
@@ -1062,13 +1081,9 @@
             }
         };
 
-        // ==========================================
-        // 🏃‍♂️ 一般巡邏：連續掃描功能 (一鍵到底)
-        // ==========================================
         window.patrolScanNfc = async function() {
             const btn = document.getElementById('scanBtn');
             
-            // 如果已經在掃描中，點擊就是「停止」
             if (isContinuousPatrol) {
                 stopNfcScan();
                 btn.innerText = "📲 開始連續巡邏掃描"; 
@@ -1084,7 +1099,7 @@
                 nfcReader = new NDEFReader(); 
                 await nfcReader.scan({ signal: nfcAbortController.signal });
                 
-                isContinuousPatrol = true; // 🌟 進入連續模式
+                isContinuousPatrol = true; 
                 isNfcActive = true; 
 
                 btn.innerText = "⏹️ 掃描中... (點擊停止)"; 
@@ -1093,7 +1108,7 @@
                 
                 nfcReader.onreading = event => { 
                     if (!isNfcActive) return; 
-                    isNfcActive = false; // 讀到一筆先鎖上，等 UI 跑完再解鎖
+                    isNfcActive = false; 
 
                     if (navigator.vibrate) navigator.vibrate(200);
                     window.verifyPatrolPoint(event.serialNumber); 
@@ -1102,7 +1117,6 @@
                     if (!isNfcActive) return;
                     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
                     showMsg('patrolMsg', "⚠️ 讀取失敗，請重試。", "error"); 
-                    // 錯誤的話，2秒後自動解鎖，讓保全可以直接再碰一次
                     setTimeout(() => { if (isContinuousPatrol) isNfcActive = true; }, 2000);
                 };
             } catch (error) { 
