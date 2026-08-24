@@ -661,27 +661,34 @@
                     skippedPoints: newSkipped,
                     pointLogs: newLogs
                 });
-                currentActiveTask.currentPointIndex = newIndex;
-                currentActiveTask.skippedPoints = newSkipped;
-                currentActiveTask.pointLogs = newLogs;
-                setTimeout(window.updatePatrolUI, 1200); // UI更新後會自動解鎖感應器
-            } catch(e) { 
-                console.error("更新任務失敗", e); 
-                if (isContinuousPatrol) isNfcActive = true; 
-            }
-        };
+            currentActiveTask.currentPointIndex = newIndex;
+            currentActiveTask.skippedPoints = newSkipped;
+            currentActiveTask.pointLogs = newLogs;
+            
+            setTimeout(window.updatePatrolUI, 1200); // UI 更新後自動解鎖感應器，保全可繼續走
+
+            // 🌟 拔除 await，將資料丟給 Firebase 背景處理 (Firebase 會自動接管離線暫存與連線上傳)
+            updateDoc(doc(db, "tasks", currentActiveTask.id), {
+                currentPointIndex: newIndex,
+                skippedPoints: newSkipped,
+                pointLogs: newLogs
+            }).catch(e => { 
+                console.warn("目前離線中，資料已暫存於手機，連線後將自動同步", e); 
+            });
 
         window.completeCurrentTask = async function() {
-            try {
-                await updateDoc(doc(db, "tasks", currentActiveTask.id), {
-                    status: 'completed',
-                    endTime: new Date().toLocaleString()
-                });
-                document.getElementById('patrolActiveUI').style.display = 'none'; 
-                document.getElementById('patrolCompleteUI').style.display = 'block';
-            } catch(e) { console.error("結案失敗", e); }
+            // 🌟 改良：直接切換到「巡邏完成」的祝賀畫面
+            document.getElementById('patrolActiveUI').style.display = 'none'; 
+            document.getElementById('patrolCompleteUI').style.display = 'block';
+            
+            // 🌟 拔除 await，讓結案動作在背景排隊上傳
+            updateDoc(doc(db, "tasks", currentActiveTask.id), {
+                status: 'completed',
+                endTime: new Date().toLocaleString()
+            }).catch(e => { 
+                console.warn("離線結案，資料已暫存於手機", e); 
+            });
         };
-
         // --- 準備選單內容 (故障/報事共用) ---
         function populatePointSelect(selectId) {
             const select = document.getElementById(selectId); select.innerHTML = '';
