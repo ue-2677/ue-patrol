@@ -928,20 +928,19 @@
             }
         };
 
-        window.adminUpdateMapping = async function() {
+        window.adminUpdateMapping = function() {
             stopNfcScan(); 
             const select = document.getElementById('adminLocationSelect');
             const loc = select.value;
             if (!adminScannedUid) { showMsg('adminMsg', "❌ 請先掃描晶片！", "error"); return; }
             if (!loc) { showMsg('adminMsg', "❌ 請選擇要綁定的地點！", "error"); return; }
             
-            // 🌟 優先更新畫面，避免無網路時卡住
             showMsg('adminMsg', `✅ 成功綁定 UID 到「${loc}」<br><small>(若離線將於背景自動同步)</small>`, 'success');
             document.getElementById('adminCurrentLoc').innerText = loc;
 
-            // 🌟 丟給 Firebase 背景排隊上傳
             setDoc(doc(db, "uidMappings", adminScannedUid), { locationName: loc })
                 .catch(e => { console.warn("離線綁定暫存中...", e); });
+        };
         };
         let adminRoutePoints = [];
         let adminRouteCurrentIdx = 0;
@@ -1072,17 +1071,20 @@
             }
         };
 
-        window.adminRouteConfirmBinding = async function() {
+        window.adminRouteConfirmBinding = function() {
             if (!tempScannedUidForRoute) return;
             const currentPointName = adminRoutePoints[adminRouteCurrentIdx];
             
             const confirmBtn = document.getElementById('adminRouteConfirmBtn');
+            
+            // 🛡️ 防連點機制：如果按鈕已經被禁用了，直接 return 阻止後續執行
+            if (confirmBtn.disabled) return; 
+
             confirmBtn.innerText = "⏳ 處理中...";
             confirmBtn.disabled = true; 
 
             stopNfcScan(); 
 
-            // 🌟 拔除 await，先切換到下一個地點
             showMsg('adminMsg', `✅ 已成功將 UID 綁定至「${currentPointName}」`, 'success');
             
             setTimeout(() => { 
@@ -1091,7 +1093,6 @@
                 window.adminRouteNextPoint(); 
             }, 800);
 
-            // 🌟 背景排隊同步至雲端
             setDoc(doc(db, "uidMappings", tempScannedUidForRoute), { locationName: currentPointName })
                 .catch(e => { console.warn("離線連續綁定暫存中...", e); });
         };
