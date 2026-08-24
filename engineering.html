@@ -215,10 +215,11 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, onSnapshot, doc, updateDoc, query, where, addDoc, deleteDoc } 
+        import { getFirestore, collection, onSnapshot, doc, updateDoc, query, where, addDoc, deleteDoc, getDoc } 
         from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential } 
+        from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
-        // 🌟 1. 貼上你共用的 Firebase Config
         const firebaseConfig = {
             apiKey: "AIzaSyBq4EKFQ3gjq1kpOWMH5MXosF7O9ENOrjw",
             authDomain: "test-ue-app.firebaseapp.com",
@@ -230,6 +231,8 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+        const auth = getAuth(app);
+        const VIRTUAL_DOMAIN = "@patrol.com";
 
         let currentUser = null;
         let dbUsers = {};
@@ -237,51 +240,96 @@
         let currentCompleteOrderId = null;
         let currentCompletePhotoBase64 = "";
 
-        // ==========================================
-        // 🛡️ 資安防護：XSS HTML 字元過濾函數
-        // ==========================================
         window.escapeHTML = function(str) {
             if (str === null || str === undefined) return '';
             return String(str).replace(/[&<>'"]/g, function(tag) {
-                const charsToReplace = {
-                    '&': '&amp;', '<': '&lt;', '>': '&gt;',
-                    "'": '&#39;', '"': '&quot;'
-                };
+                const charsToReplace = { '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
                 return charsToReplace[tag] || tag;
             });
         };
 
         setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleString(); }, 1000);
 
-        // --- 權限驗證邏輯 ---
-        window.checkAuth = function() {
-            const userStr = localStorage.getItem('cloudCurrentUser');
-            if (!userStr) { window.location.href = 'index.html'; return; }
-            
-            currentUser = JSON.parse(userStr);
-            if (currentUser.role !== 'admin' && currentUser.role !== 'sub_admin' && currentUser.role !== 'engineering') {
-                alert("權限不足，將返回登入頁！");
-                window.location.href = 'index.html'; return;
-            }
-            
-            document.getElementById('currentUserDisplay').innerText = `👤 ${currentUser.name}`;
-            initRealtimeListeners();
-        };
+        // ==========================================
+        // 🔐 登入驗證與監聽 (單一設備防護版)
+        // ==========================================
+        window.isSystemInitialized = false; 
+        let userDocListener = null; 
 
-        window.performLogout = function() {
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                const username = user.email.replace(VIRTUAL_DOMAIN, '');
+                
+                if (userDocListener) userDocListener(); 
+
+                userDocListener = onSnapshot(doc(db, "users", username), (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        
+                        // 🛡️ 密碼被重設防護
+                        if (data.authEmail && data.authEmail !== user.email) {
+                            if (userDocListener) userDocListener();
+                            auth.signOut();
+                            alert("⚠️ 密碼已被管理員重設，舊憑證已失效，請重新登入！");
+                            window.location.replace('index.html');
+                            return;
+                        }
+
+                        // 🛡️ 單一設備登入防護 (踢除舊設備機制)
+                        const dbSessionId = data.currentSessionId;
+                        const myLocalSessionId = localStorage.getItem('patrolSessionId');
+                        if (dbSessionId && myLocalSessionId && dbSessionId !== myLocalSessionId) {
+                            if (userDocListener) userDocListener();
+                            auth.signOut();
+                            localStorage.removeItem('patrolSessionId');
+                            alert("⚠️ 您的帳號已在其他設備或瀏覽器登入，本機已被強制登出！");
+                            window.location.replace('index.html');
+                            return;
+                        }
+
+                        currentUser = { username: username, ...data };
+                        
+                        // ⚠️ 這裡要攔截非工程部或管理員的人員
+                        if (currentUser.role !== 'admin' && currentUser.role !== 'sub_admin' && currentUser.role !== 'engineering') {
+                            alert("權限不足，將返回登入頁！");
+                            auth.signOut();
+                            window.location.replace('index.html');
+                            return;
+                        }
+                        
+                        if (!window.isSystemInitialized) {
+                            window.isSystemInitialized = true;
+                            document.getElementById('currentUserDisplay').innerText = `👤 ${currentUser.name}`;
+                            initRealtimeListeners();
+                        }
+                    } else {
+                        if (userDocListener) userDocListener();
+                        auth.signOut();
+                        window.location.replace('index.html');
+                    }
+                });
+            } else {
+                if (userDocListener) { userDocListener(); userDocListener = null; }
+                window.isSystemInitialized = false;
+                window.location.replace('index.html');
+            }
+        });
+
+        window.performLogout = async function() {
             if(confirm("確定要登出系統嗎？")) { 
+                await auth.signOut();
                 localStorage.removeItem('cloudCurrentUser'); 
-                window.location.href = 'index.html'; 
+                localStorage.removeItem('patrolSessionId');
+                window.location.replace('index.html'); 
             }
         };
 
-        // --- Firebase 即時監聽 ---
+        // --- Firebase 即時監聽工單 ---
         function initRealtimeListeners() {
             onSnapshot(collection(db, "users"), (snapshot) => {
                 dbUsers = {}; snapshot.forEach(doc => { dbUsers[doc.id] = doc.data(); });
             });
 
-            // ⚠️ 這裡過濾條件設為 "工程部"
             const q = query(collection(db, "workOrders"), where("department", "==", "工程部"));
             onSnapshot(q, (snapshot) => {
                 dbWorkOrders = [];
@@ -290,11 +338,8 @@
             });
         }
 
-        // --- 篩選器觸發功能 ---
-        window.applyFilters = function() {
-            window.renderWorkOrders(); 
-        };
-
+        // --- 篩選器與表格渲染 ---
+        window.applyFilters = function() { window.renderWorkOrders(); };
         window.clearFilters = function() {
             document.getElementById('filterKeyword').value = '';
             document.getElementById('filterStartDate').value = '';
@@ -303,51 +348,40 @@
             window.renderWorkOrders();
         };
 
-        // --- 升級版：支援篩選與防護的渲染表格功能 ---
         window.renderWorkOrders = function() {
             const tbody = document.getElementById('workOrderTableBody');
             tbody.innerHTML = '';
             
-            // 1. 取得畫面上所有的篩選條件
             const keyword = document.getElementById('filterKeyword').value.toLowerCase().trim();
             const startDateRaw = document.getElementById('filterStartDate').value; 
             const endDateRaw = document.getElementById('filterEndDate').value;     
             const statusFilter = document.getElementById('filterStatus').value;
 
-            // 將日期轉為 YYYYMMDD 的純數字字串，方便與我們的工單編號比對
             const startDate = startDateRaw ? startDateRaw.replace(/-/g, '') : '00000000';
             const endDate = endDateRaw ? endDateRaw.replace(/-/g, '') : '99999999';
 
-            // 2. 進行陣列過濾 
             let filteredOrders = dbWorkOrders.filter(order => {
                 if (statusFilter !== 'all' && order.status !== statusFilter) return false;
-
                 if (keyword) {
                     const searchStr = `${order.refNumber} ${order.location} ${order.description || ''} ${order.completeRemark || ''}`.toLowerCase();
                     if (!searchStr.includes(keyword)) return false;
                 }
-
                 const dateMatch = order.refNumber.match(/-(\d{8})-/);
                 if (dateMatch) {
                     const orderDate = dateMatch[1];
                     if (orderDate < startDate || orderDate > endDate) return false;
                 }
-
                 return true; 
             });
 
-            // 3. 排序 (日期與編號最新的在最上面)
             filteredOrders.sort((a, b) => b.refNumber.localeCompare(a.refNumber));
 
-            // 4. 判斷是否有資料
             if (filteredOrders.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#999; padding: 30px;">找不到符合條件的工單。</td></tr>';
                 return;
             }
 
-            // 5. 渲染過濾後的資料到畫面上
             filteredOrders.forEach(order => {
-                // 🛡️ 實施 XSS 過濾
                 const safeRefNumber = window.escapeHTML(order.refNumber);
                 const safeReporter = window.escapeHTML(order.reporter || '保全');
                 const safeLocation = window.escapeHTML(order.location);
@@ -472,7 +506,6 @@
             } catch(e) { alert("狀態更新失敗，請檢查網路連線！"); }
         };
 
-        // --- 備份與刪除 (含稽核軌跡) ---
         window.exportWorkOrders = function() {
             const dataStr = JSON.stringify(dbWorkOrders, null, 2);
             const blob = new Blob([dataStr], { type: 'application/json' });
@@ -522,18 +555,22 @@
             if (!oldPw || !newPw || !confPw) { alert("請填寫所有密碼欄位！"); return; }
             if (newPw !== confPw) { alert("新密碼不相符！"); return; }
             
-            const un = currentUser.username;
-            if (dbUsers[un].password !== oldPw) { alert("舊密碼錯誤！"); return; }
-            
             try {
-                await updateDoc(doc(db, "users", un), { password: newPw });
+                const credential = EmailAuthProvider.credential(auth.currentUser.email, oldPw);
+                await reauthenticateWithCredential(auth.currentUser, credential);
+                await updatePassword(auth.currentUser, newPw);
+                
                 document.getElementById('selfPasswordModal').style.display = 'none';
-                alert("密碼修改成功！請重新登入。");
-                window.performLogout(); 
-            } catch(e) { alert("更新失敗"); }
+                alert("✅ 密碼修改成功！基於安全機制，請使用新密碼重新登入。");
+                await auth.signOut();
+                window.location.replace('index.html'); 
+            } catch(e) { 
+                console.error(e);
+                if (e.code === 'auth/invalid-credential') alert("❌ 舊密碼輸入錯誤！");
+                else alert("❌ 更新失敗：" + e.message); 
+            }
         };
 
-        // --- 圖片放大預覽功能 ---
         window.openImageModal = function(base64Src) {
             if (!base64Src) return;
             document.getElementById('enlargedImage').src = base64Src;
@@ -544,9 +581,6 @@
             document.getElementById('imageViewerModal').style.display = 'none';
             document.getElementById('enlargedImage').src = ''; 
         };
-
-        // 啟動驗證
-        window.onload = window.checkAuth;
     </script>
 </body>
 </html>
