@@ -368,6 +368,10 @@
                             
                             window.switchView('view-role', '主選單');
                             initRealtimeListeners();
+                            
+                            // 👇 新增這行：強制清除狀態列文字，解除文字更新卡死的防護限制
+                            document.getElementById('networkStatus').innerText = ""; 
+                            
                             window.checkNetworkStatus(); 
                         }
                     } else {
