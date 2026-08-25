@@ -390,6 +390,10 @@
                 if (userDocListener) { userDocListener(); userDocListener = null; }
                 window.isSystemInitialized = false;
                 window.switchView('view-login', '系統登入');
+                
+                // ✅ 新增這行：強制清除「初始化」字樣，讓後續的網路狀態檢查可以順利覆寫
+                document.getElementById('networkStatus').innerText = "🟢 等待登入"; 
+                
                 window.checkNetworkStatus();
             }
         });
@@ -940,7 +944,6 @@
 
             setDoc(doc(db, "uidMappings", adminScannedUid), { locationName: loc })
                 .catch(e => { console.warn("離線綁定暫存中...", e); });
-        };
         };
         let adminRoutePoints = [];
         let adminRouteCurrentIdx = 0;
