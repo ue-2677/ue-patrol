@@ -315,7 +315,37 @@
                 nfcAbortController = null;
             }
         }
+        // ==========================================
+        // 🔆 螢幕長亮控制 (Wake Lock API)
+        // ==========================================
+        let wakeLock = null;
 
+        window.requestWakeLock = async function() {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('💡 螢幕長亮已啟用');
+                } catch (err) {
+                    console.error('螢幕長亮啟用失敗:', err);
+                }
+            }
+        };
+
+        window.releaseWakeLock = function() {
+            if (wakeLock !== null) {
+                wakeLock.release().then(() => {
+                    wakeLock = null;
+                    console.log('🔋 螢幕長亮已解除，恢復省電模式');
+                });
+            }
+        };
+
+        // 當手機切換 APP 或螢幕被手動關閉再打開時，自動重新要回螢幕長亮權限
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                window.requestWakeLock();
+            }
+        });
         // ==========================================
         // 🔐 登入驗證與監聽 (單一設備登入防護版)
         // ==========================================
@@ -473,6 +503,13 @@
             document.getElementById(viewId).classList.add('active');
             document.getElementById('headerTitle').innerText = title;
             const btnBack = document.getElementById('btnBack');
+            
+            // 🌟 螢幕長亮邏輯：只有進入巡邏畫面才保持長亮，離開則解除
+            if (viewId === 'view-patrol-exec') {
+                window.requestWakeLock();
+            } else {
+                window.releaseWakeLock();
+            }
             
             if (viewId === 'view-login' || viewId === 'view-role') { btnBack.style.display = 'none'; } 
             else {
