@@ -978,37 +978,40 @@
                 btn.innerText = "⏳ 正在感應..."; btn.className = "btn btn-warning"; hideMsg('adminMsg');
                 
                 nfcReader.onreading = event => {
+                 nfcReader.onreading = event => {
                     if (!isNfcActive) return; 
                     isNfcActive = false; 
 
                     if (navigator.vibrate) navigator.vibrate(200); 
                     adminScannedUid = event.serialNumber;
                     document.getElementById('adminUidDisplay').innerText = adminScannedUid;
-                    // 👇 替換為支援樓層連動的自動反查邏輯
-                const boundLoc = dbUidMappings[adminScannedUid];
-                document.getElementById('adminCurrentLoc').innerText = boundLoc || "尚未綁定任何地點";
-                
-                if (boundLoc) {
-                    // 從資料庫反查這個地點所屬的樓層
-                    const matchedPoint = dbPoints.find(pt => `${pt.floor || ''} ${pt.name || ''}`.trim() === boundLoc);
-                    const floorToSelect = matchedPoint ? (matchedPoint.floor || '未分類') : '';
                     
-                    if (floorToSelect) {
-                        document.getElementById('adminFloorSelect').value = floorToSelect;
-                        window.adminFloorChanged(boundLoc); // 觸發連動，並帶入預設地點
+                    const boundLoc = dbUidMappings[adminScannedUid];
+                    document.getElementById('adminCurrentLoc').innerText = boundLoc || "尚未綁定任何地點";
+                
+                    if (boundLoc) {
+                        // 從資料庫反查這個地點所屬的樓層
+                        const matchedPoint = dbPoints.find(pt => `${pt.floor || ''} ${pt.name || ''}`.trim() === boundLoc);
+                        const floorToSelect = matchedPoint ? (matchedPoint.floor || '未分類') : '';
+                        
+                        if (floorToSelect) {
+                            document.getElementById('adminFloorSelect').value = floorToSelect;
+                            window.adminFloorChanged(boundLoc); // 觸發連動，並帶入預設地點
+                        } else {
+                            document.getElementById('adminFloorSelect').value = "";
+                            document.getElementById('adminLocationSelect').innerHTML = '<option value="">-- 請先選擇樓層 --</option>';
+                        }
                     } else {
+                        // 新晶片，清空選單讓用戶自行選擇
                         document.getElementById('adminFloorSelect').value = "";
                         document.getElementById('adminLocationSelect').innerHTML = '<option value="">-- 請先選擇樓層 --</option>';
-                    }
-                } else {
-                    // 新晶片，清空選單讓用戶自行選擇
-                    document.getElementById('adminFloorSelect').value = "";
-                    document.getElementById('adminLocationSelect').innerHTML = '<option value="">-- 請先選擇樓層 --</option>';
+                    } // 🔧 修正 1：移除錯誤的分號，正確閉合 else 區塊
+
+                    // 🔧 修正 2：將這三行移到 if-else 外面，確保無論新舊晶片都會顯示結果區塊
                     document.getElementById('adminResult').style.display = 'block';
-                    
                     showMsg('adminMsg', `✅ 晶片讀取成功！<br>👇 請在下方選擇地點，並點擊「儲存至雲端」完成綁定。`, 'info');
                     resetAdminBtn();
-                };
+                }; // 🔧 修正 3：補上 nfcReader.onreading 事件箭頭函數的閉合大括號
                 nfcReader.onreadingerror = () => {
                     if (!isNfcActive) return;
                     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
