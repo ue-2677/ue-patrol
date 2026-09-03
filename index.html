@@ -158,7 +158,15 @@
 
         <!-- 視圖 4：新增任務 -->
         <div id="view-route-add" class="view-section">
-            <input type="text" id="searchInput" class="search-box" placeholder="輸入關鍵字搜尋路線..." onkeyup="window.filterRoutes()">
+            <div class="card" style="padding: 15px; margin-bottom: 10px; background: #e8f0fe; border: 1px solid #cddc39;">
+                <p style="margin: 0 0 10px 0; font-size: 14px; color: var(--primary); font-weight: bold;">📂 第一步：選擇主路線區域</p>
+                <select id="mainRouteSelect" class="search-box" style="margin-bottom: 5px; background: white;" onchange="window.filterSubRoutes()">
+                    <option value="all">-- 顯示全部路線 --</option>
+                </select>
+            </div>
+            
+            <input type="text" id="searchInput" class="search-box" placeholder="🔍 關鍵字搜尋子路線..." onkeyup="window.filterRoutes()">
+            
             <div id="routeList"></div>
         </div>
 
@@ -546,23 +554,82 @@
             });
         }
 
+       // 🌟 載入主路線下拉選單 (供過濾使用)
+        function loadMainRouteOptions() {
+            const select = document.getElementById('mainRouteSelect');
+            if (!select) return;
+            const currentVal = select.value;
+            select.innerHTML = '<option value="all">-- 顯示全部路線 --</option>';
+            
+            // 抓出所有不重複且不為空的主路線名稱
+            const uniqueMains = [...new Set(dbRoutes.map(r => (r.mainRoute || '').trim()).filter(Boolean))];
+            
+            uniqueMains.sort((a, b) => a.localeCompare(b));
+            uniqueMains.forEach(main => {
+                const isSelected = (main === currentVal) ? 'selected' : '';
+                select.innerHTML += `<option value="${main}" ${isSelected}>📂 ${main}</option>`;
+            });
+            // 加入獨立路線選項
+            const hasUncategorized = dbRoutes.some(r => !(r.mainRoute || '').trim());
+            if (hasUncategorized) {
+                select.innerHTML += `<option value="uncategorized" ${(currentVal === 'uncategorized') ? 'selected' : ''}>📌 獨立路線 (未分類)</option>`;
+            }
+        }
+
+        // 🌟 改良版的路線渲染：支援主路線下拉選單與關鍵字雙重過濾
         window.renderRoutes = function(keyword = '') {
-            const list = document.getElementById('routeList'); list.innerHTML = '';
+            loadMainRouteOptions(); // 確保下拉選單是最新的
+
+            const list = document.getElementById('routeList'); 
+            list.innerHTML = '';
+            
             let activeRoutes = dbRoutes.filter(r => r.isActive !== false);
             activeRoutes.sort((a, b) => (a.routeOrder || 999) - (b.routeOrder || 999));
-            if(keyword) activeRoutes = activeRoutes.filter(r => r.name.toLowerCase().includes(keyword.toLowerCase()));
             
-            if (activeRoutes.length === 0) list.innerHTML = '<p style="text-align:center; color:#999;">雲端尚未設定路線。</p>';
+            // 1. 先處理主路線過濾
+            const mainFilter = document.getElementById('mainRouteSelect') ? document.getElementById('mainRouteSelect').value : 'all';
+            if (mainFilter !== 'all') {
+                if (mainFilter === 'uncategorized') {
+                    activeRoutes = activeRoutes.filter(r => !(r.mainRoute || '').trim());
+                } else {
+                    activeRoutes = activeRoutes.filter(r => (r.mainRoute || '').trim() === mainFilter);
+                }
+            }
+
+            // 2. 再處理關鍵字搜尋
+            if(keyword) {
+                activeRoutes = activeRoutes.filter(r => r.name.toLowerCase().includes(keyword.toLowerCase()));
+            }
+            
+            if (activeRoutes.length === 0) {
+                list.innerHTML = '<p style="text-align:center; color:#999; margin-top:20px;">無符合條件的路線。</p>';
+                return;
+            }
+
             activeRoutes.forEach(route => {
-                const div = document.createElement('div'); div.className = 'route-item';
+                const div = document.createElement('div'); 
+                div.className = 'route-item';
                 const unorderedBadge = route.isUnordered ? '<span class="badge badge-info" style="font-size:10px; margin-left:5px;">無序模式</span>' : '';
-                div.innerHTML = `<strong>${route.name}</strong>${unorderedBadge}<br><small>共 ${route.points.length} 個巡邏點</small>`;
+                
+                // 標示出這條路線所屬的主路線 (如果是顯示全部狀態)
+                const mainTag = (mainFilter === 'all' && route.mainRoute) ? `<br><small style="color:var(--primary); font-weight:bold;">📂 ${route.mainRoute}</small>` : '';
+
+                div.innerHTML = `<strong>${route.name}</strong>${unorderedBadge}${mainTag}<br><small>共 ${route.points.length} 個巡邏點</small>`;
                 div.onclick = () => window.createNewTask(route);
                 list.appendChild(div);
             });
         };
-        window.filterRoutes = function() { window.renderRoutes(document.getElementById('searchInput').value); };
 
+        // 供按鍵與下拉選單觸發的過濾函數
+        window.filterRoutes = function() { 
+            window.renderRoutes(document.getElementById('searchInput').value); 
+        };
+        
+        window.filterSubRoutes = function() {
+            // 切換主路線時，清空下方的關鍵字搜尋框
+            document.getElementById('searchInput').value = '';
+            window.renderRoutes('');
+        };
         // 🌟 改良點：徹底解除阻塞，支援在無網路（例如地下室）直接預建任務 ID 並秒開介面
         window.createNewTask = function(routeTemplate) {
             const newTask = {
