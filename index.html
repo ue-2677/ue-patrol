@@ -937,10 +937,18 @@
         window.enterAdminMode = function() {
             // 🌟 改良：同樣使用陣列檢查，確保二級管理員也能順利進入綁定介面
             if (currentUser && ['admin', 'sub_admin'].includes(currentUser.role)) {
-                const select = document.getElementById('adminLocationSelect');
-                select.innerHTML = '<option value="">-- 請選擇地點 --</option>';
-                let allPoints = dbPoints.map(pt => `${pt.floor || ''} ${pt.name || ''}`.trim());
-                [...new Set(allPoints)].forEach(loc => select.innerHTML += `<option value="${loc}">${loc}</option>`);
+                // 👇 替換為載入樓層的邏輯
+                const floorSelect = document.getElementById('adminFloorSelect');
+                floorSelect.innerHTML = '<option value="">-- 請先選擇樓層 --</option>';
+                
+                // 提取所有不重複的樓層，並排序
+                let allFloors = dbPoints.map(pt => pt.floor || '未分類');
+                [...new Set(allFloors)].sort().forEach(floor => {
+                    floorSelect.innerHTML += `<option value="${floor}">${floor}</option>`;
+                });
+                
+                // 初始化地點選單為空狀態
+                document.getElementById('adminLocationSelect').innerHTML = '<option value="">-- 請先選擇樓層 --</option>';
                 
                 const routeSelect = document.getElementById('adminRouteSelect');
                 routeSelect.innerHTML = '<option value="">-- 請選擇路線 --</option>';
@@ -976,8 +984,26 @@
                     if (navigator.vibrate) navigator.vibrate(200); 
                     adminScannedUid = event.serialNumber;
                     document.getElementById('adminUidDisplay').innerText = adminScannedUid;
-                    document.getElementById('adminCurrentLoc').innerText = dbUidMappings[adminScannedUid] || "尚未綁定任何地點";
-                    document.getElementById('adminLocationSelect').value = dbUidMappings[adminScannedUid] || "";
+                    // 👇 替換為支援樓層連動的自動反查邏輯
+                const boundLoc = dbUidMappings[adminScannedUid];
+                document.getElementById('adminCurrentLoc').innerText = boundLoc || "尚未綁定任何地點";
+                
+                if (boundLoc) {
+                    // 從資料庫反查這個地點所屬的樓層
+                    const matchedPoint = dbPoints.find(pt => `${pt.floor || ''} ${pt.name || ''}`.trim() === boundLoc);
+                    const floorToSelect = matchedPoint ? (matchedPoint.floor || '未分類') : '';
+                    
+                    if (floorToSelect) {
+                        document.getElementById('adminFloorSelect').value = floorToSelect;
+                        window.adminFloorChanged(boundLoc); // 觸發連動，並帶入預設地點
+                    } else {
+                        document.getElementById('adminFloorSelect').value = "";
+                        document.getElementById('adminLocationSelect').innerHTML = '<option value="">-- 請先選擇樓層 --</option>';
+                    }
+                } else {
+                    // 新晶片，清空選單讓用戶自行選擇
+                    document.getElementById('adminFloorSelect').value = "";
+                    document.getElementById('adminLocationSelect').innerHTML = '<option value="">-- 請先選擇樓層 --</option>';
                     document.getElementById('adminResult').style.display = 'block';
                     
                     showMsg('adminMsg', `✅ 晶片讀取成功！<br>👇 請在下方選擇地點，並點擊「儲存至雲端」完成綁定。`, 'info');
