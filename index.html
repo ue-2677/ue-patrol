@@ -112,6 +112,7 @@
                     <p>目前綁定: <strong id="adminCurrentLoc" style="color: var(--primary);"></strong></p>
                     <hr style="border: 0.5px solid #ddd; margin: 15px 0;">
                     <h4>更新巡邏點設定</h4>
+                    <select id="adminFloorSelect" class="form-control" onchange="window.adminFloorChanged()"></select>
                     <select id="adminLocationSelect" class="form-control"></select>
                     <button class="btn btn-success" id="adminSingleSaveBtn" onclick="window.adminUpdateMapping()">儲存至雲端</button>
                 </div>
@@ -908,7 +909,31 @@
             const btn = document.getElementById('adminScanBtn');
             if (btn) { btn.innerText = "📲 重新掃描晶片"; btn.className = "btn btn-primary"; }
         }
-
+        // 👇 新增：當樓層切換時，動態更新地點下拉選單
+        window.adminFloorChanged = function(preselectedLoc = "") {
+            const selectedFloor = document.getElementById('adminFloorSelect').value;
+            const locSelect = document.getElementById('adminLocationSelect');
+            
+            // 初始化地點選單
+            locSelect.innerHTML = '<option value="">-- 請選擇地點 --</option>';
+        
+            if (!selectedFloor) return;
+        
+            // 從 dbPoints 過濾出屬於該樓層的地點 (相容沒有 floor 屬性的舊資料)
+            const filteredPoints = dbPoints.filter(pt => (pt.floor || '未分類') === selectedFloor);
+            
+            // 組合地點名稱並排除重複
+            const uniqueLocs = [...new Set(filteredPoints.map(pt => `${pt.floor || ''} ${pt.name || ''}`.trim()))];
+            
+            uniqueLocs.forEach(loc => {
+                locSelect.innerHTML += `<option value="${loc}">${loc}</option>`;
+            });
+        
+            // 如果有帶入預設地點 (掃描舊晶片時使用)，則自動選中
+            if (preselectedLoc) {
+                locSelect.value = preselectedLoc;
+            }
+        };
         window.enterAdminMode = function() {
             // 🌟 改良：同樣使用陣列檢查，確保二級管理員也能順利進入綁定介面
             if (currentUser && ['admin', 'sub_admin'].includes(currentUser.role)) {
