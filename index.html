@@ -392,9 +392,6 @@
                         }
         
                         const dbSessionId = data.currentSessionId;
-                    if (docSnap.exists()) {
-                        const data = docSnap.data();
-                        const dbSessionId = data.currentSessionId;
                         const myLocalSessionId = localStorage.getItem('patrolSessionId');
 
                         // 🔍 防護：若不是正在手動登入且 SessionID 不符，則剔除
@@ -430,15 +427,13 @@
                             window.switchView('view-role', '主選單');
                             initRealtimeListeners();
                             
-                            // 👇 新增這行：強制清除狀態列文字，解除文字更新卡死的防護限制
                             document.getElementById('networkStatus').innerText = ""; 
-                            
                             window.checkNetworkStatus(); 
                         }
                     } else {
                         if (userDocListener) userDocListener();
                         auth.signOut();
-                        alert("⚠️ 您的帳號權限已被移除，請聯絡管理員。");
+                        alert("⚠️️ 您的帳號權限已被移除，請聯絡管理員。");
                         window.switchView('view-login', '系統登入');
                     }
                 }, (error) => {
@@ -452,10 +447,7 @@
                 if (userDocListener) { userDocListener(); userDocListener = null; }
                 window.isSystemInitialized = false;
                 window.switchView('view-login', '系統登入');
-                
-                // ✅ 新增這行：強制清除「初始化」字樣，讓後續的網路狀態檢查可以順利覆寫
                 document.getElementById('networkStatus').innerText = "🟢 等待登入"; 
-                
                 window.checkNetworkStatus();
             }
         });
